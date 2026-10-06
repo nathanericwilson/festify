@@ -1,0 +1,7 @@
+spotipy>=2.25
+anthropic>=0.40
+instaloader>=4.13
+python-dotenv>=1.0
+requests>=2.31
+pillow>=10.0
+pytest>=8.0

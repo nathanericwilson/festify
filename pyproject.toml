@@ -1,0 +1,15 @@
+[project]
+name = "festify"
+version = "0.1.0"
+description = "Turn Instagram concert/festival posts into Spotify playlists"
+requires-python = ">=3.10"
+dependencies = ["spotipy", "anthropic", "instaloader", "python-dotenv", "requests", "pillow"]
+
+[project.scripts]
+festify = "festify.cli:main"
+
+[tool.setuptools]
+packages = ["festify"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

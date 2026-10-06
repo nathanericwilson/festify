@@ -1,0 +1,11 @@
+.venv/
+.env
+.festify_cache.json
+.spotify_token_cache
+*.session
+__pycache__/
+*.egg-info/
+.pytest_cache/
+dryrun*.log
+events*.json
+.cache

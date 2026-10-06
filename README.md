@@ -1,0 +1,136 @@
+# festify
+
+Turn Instagram concert/festival posts (or screenshots of them) into one private Spotify playlist per event. Built for small local shows, where many bands share names with unrelated artists elsewhere.
+
+**How it works**
+
+1. **Read the poster.** Claude (vision) extracts the event, date, venue, city and lineup from the images and caption. Tagged `@handles` are used to recover bands whose logos are illegible.
+2. **Identify each band.** Deezer (fan counts) and Last.fm (listeners) find candidates. When several share a name, location evidence (MusicBrainz + web search, e.g. Bandcamp) and Claude pick the most plausible local one. With `--ask` you choose yourself.
+3. **Pick songs.** Top songs come from Deezer/Last.fm and are matched on Spotify by ISRC. Spotify is only the destination.
+4. **Build playlists.** One private playlist per event, named `<Event> – <Date>`, with the post image as the cover.
+5. **Report.** Per event: matched, picked-from-several (with evidence), possibly non-local, not on Spotify, illegible logos, and the playlist link.
+
+> Spotify's Feb 2026 Development Mode changes are respected: no top-tracks/popularity/followers, search limit 10, `POST /me/playlists`, `POST /playlists/{id}/items`. Only the official Web API is used.
+
+## Requirements
+
+- Python 3.10+
+- A **Spotify Premium** account (required to own a Development Mode app)
+- An **Anthropic API key** (paid, usage-based; see [Cost](#cost))
+- A free **Last.fm API key** (optional but recommended)
+
+## Setup
+
+### 1. Get the code
+
+```bash
+git clone <this-repo-url> festify
+cd festify
+```
+
+### 2. Install
+
+macOS / Linux:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Windows (PowerShell):
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+### 3. Create your Spotify app
+
+1. Open <https://developer.spotify.com/dashboard> and log in (Premium account).
+2. **Create app**. Any name and description.
+3. **Redirect URI:** `http://127.0.0.1:8888/callback` exactly (not `localhost`). Click **Add**.
+4. Tick **Web API**, accept the terms, **Save**.
+5. Open the app's **Settings** and copy the **Client ID** and **Client secret**.
+
+Development Mode apps allow 5 authorized users; the owner needs Premium.
+
+### 4. Get the other keys
+
+- **Anthropic:** <https://console.anthropic.com> → API Keys → Create Key. Add credit under Billing.
+- **Last.fm (free):** <https://www.last.fm/api/account/create> (log in first). Only the API key is needed.
+
+### 5. Configure
+
+```bash
+cp .env.example .env        # Windows: copy .env.example .env
+```
+
+Edit `.env` and fill in `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `ANTHROPIC_API_KEY` and `LASTFM_API_KEY`. Never commit `.env` (it is gitignored).
+
+| Variable | Purpose |
+|---|---|
+| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | Your Spotify app |
+| `ANTHROPIC_API_KEY` | Poster reading, picking, web search |
+| `LASTFM_API_KEY` | Secondary listener/top-track source |
+| `FESTIFY_MODEL` | Claude model (default `claude-sonnet-5-5`) |
+| `HOME_REGION` | "Local" when a poster has no city (default `Utah, Salt Lake City, Provo`; set your own) |
+| `IG_USERNAME` | Optional, see Instagram below |
+| `MUSICBRAINZ_CONTACT` | Your email or URL for the MusicBrainz User-Agent |
+
+### 6. Try it
+
+Dry run first (no Spotify login, creates nothing):
+
+```bash
+python -m festify path/to/poster.png --dry-run
+```
+
+The first real run opens a browser to authorize Spotify; the token is cached locally in `.spotify_token_cache`.
+
+## Usage
+
+```bash
+python -m festify poster.png --dry-run
+python -m festify https://www.instagram.com/p/XXXX/ screenshots_folder/ --tracks 4
+python -m festify poster.png --ask          # choose same-name artists yourself
+```
+
+| Flag | Meaning |
+|---|---|
+| `--dry-run` | Show everything, create nothing |
+| `--ask` | Pick among same-name artists yourself. Shows genres, releases, songs, location evidence, Claude's suggestion and an `open.spotify.com` link so you can check the About tab's "Where people listen". Your picks are cached. |
+| `--tracks N` | Songs per artist (default 3) |
+| `--no-web` | Skip web-search location lookups (cheaper, less evidence) |
+| `--events-file F` / `--save-events F` | Reuse/save the extracted events as JSON |
+
+**Inputs:** Instagram post/reel URLs, image files, or folders. Each URL and each folder is one post; loose image files are treated as one post. Duplicate events across posts are merged. A multi-venue festival spread over several slides becomes one event.
+
+### Instagram
+
+Link fetching uses [instaloader](https://instaloader.github.io/) and often works anonymously for public posts, but Instagram can block or rate-limit it at any time. If it does, festify says so; **screenshots always work**. For better odds, run `instaloader -l <your_username>` once to save a login session and set `IG_USERNAME` (a throwaway account is safer than your main one).
+
+### Cache
+
+Picks and location findings are stored in `.festify_cache.json`, so each artist is resolved once. Delete an entry (or the file) to re-resolve. `--ask` overrides cached Claude picks and saves yours.
+
+## Cost
+
+Poster reading is cents. The main cost is web search (about a cent per artist, first time only) plus Claude calls for picking. Results are cached, so repeat bands are free. To reduce cost: use `--no-web`, set `FESTIFY_MODEL` to a smaller model, or use `--ask`.
+
+## Tests
+
+```bash
+python -m pytest
+```
+
+Tests use mocked API responses and need no keys.
+
+## Privacy and safety
+
+- Keys live only in your local `.env`. The cache and token files are gitignored.
+- Playlists are created as **private**.
+- Be considerate with Instagram, MusicBrainz (the client throttles to under 1 request/second), Deezer and Last.fm, and follow their terms of use.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

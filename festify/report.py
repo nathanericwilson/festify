@@ -34,7 +34,8 @@ def print_report(ev: Event, results: list[ArtistResult], playlist: str, dry_run:
     matched = [r for r in results if r.outcome == "matched" and r.has_songs and not r.nonlocal_flag]
     picked = [r for r in results if r.outcome in ("picked", "manual") and r.has_songs]
     flagged = [r for r in results if r.outcome == "matched" and r.has_songs and r.nonlocal_flag]
-    missing = [r for r in results if not r.has_songs]
+    review = [r for r in results if r.outcome == "needs_review"]
+    missing = [r for r in results if not r.has_songs and r.outcome != "needs_review"]
 
     def section(title, rows, fmt):
         out(f"\n{title} ({len(rows)})")
@@ -69,6 +70,16 @@ def print_report(ev: Event, results: list[ArtistResult], playlist: str, dry_run:
     def f_miss(r):
         out(f"  - {r.name}{_tag(ev, r)}: {r.reason}")
 
+    def f_review(r):
+        out(f"  ! {r.name}{_tag(ev, r)}: several artists share this name and I'm not sure which. No songs added.")
+        out(f"      best guess: {r.chosen}")
+        out(f"      why unsure: {r.reason[:400]}")
+        for c in r.candidates:
+            fans = f" ({c['fans']} Deezer fans)" if c.get("fans") is not None else ""
+            out(f"      - {c['name']}{fans} {c['url']}")
+        out("      fix: re-run with --ask, or --pin \"Name=<spotify artist link>\"")
+
+    section("NEEDS YOUR PICK (same-name artists, not confident)", review, f_review)
     section("Matched", matched, f_match)
     section("Picked from several same-name artists", picked, f_pick)
     section("Single match, possibly NOT local", flagged, f_flag)

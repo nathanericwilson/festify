@@ -52,6 +52,7 @@ class ArtistResult:
     songs: list[SongPick] = field(default_factory=list)
     song_sources: list[str] = field(default_factory=list)
     n_candidates: int = 0
+    candidates: list = field(default_factory=list)  # shown when the pick needs your review
 
     @property
     def has_songs(self) -> bool:

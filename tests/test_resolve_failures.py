@@ -118,3 +118,39 @@ def test_pinned_artist_uses_spotify_only(monkeypatch):
     choice = {"cid": "spotify:RIGHT", "source": "spotify", "spotify_id": "RIGHT", "pinned": True}
     res = pick_songs(Sp(), Dz(), Lf(), "Skrude", choice, n=3)
     assert [s.title for s in res.songs] == ["Real Song"]
+
+
+def test_strict_mode_only_accepts_isrc_matches_for_same_name_artists():
+    from festify.songs import pick_songs
+
+    class Dz:
+        def top_tracks(self, *a, **k): return [{"id": 1, "title": "Locust"}, {"id": 2, "title": "Parasomnia"}]
+        def track(self, tid): return {"isrc": "ISRC1" if tid == 1 else None}
+
+    wrong = {"id": "w", "uri": "spotify:track:w", "name": "Parasomnia", "album": "",
+             "artists": [{"id": "WRONG", "name": "Skrude"}]}
+    right = {"id": "r", "uri": "spotify:track:r", "name": "Locust", "album": "",
+             "artists": [{"id": "RIGHT", "name": "Skrude"}]}
+
+    class Sp:
+        def track_by_isrc(self, isrc): return [right] if isrc == "ISRC1" else []
+        def search_tracks(self, *a, **k): return [wrong]   # a same-name artist: must NOT be used
+        def search_artists(self, *a, **k): return [{"id": "WRONG", "name": "Skrude"}]
+        def artist_albums(self, *a, **k): return []
+
+    class Lf:
+        available = True
+        def top_tracks(self, *a, **k): raise AssertionError("no Last.fm in strict mode")
+
+    res = pick_songs(Sp(), Dz(), Lf(), "Skrude", {"cid": "deezer:1", "source": "deezer"}, n=3, strict=True)
+    assert [s.title for s in res.songs] == ["Locust"]
+
+
+def test_low_confidence_ambiguous_pick_needs_review(tmp_path):
+    cache = Cache(tmp_path / "c.json")
+    cache.set("artists", "skrude", {"choice": {"cid": "deezer:1", "source": "deezer", "name": "Skrude?", "url": "u"},
+                                    "by": "claude", "ambiguous": True, "confidence": "medium", "reason": "unsure",
+                                    "candidates": [{"name": "A", "url": "ua"}, {"name": "B", "url": "ub"}]})
+    r = Resolver(Config(), cache, FakeDeezer(), FakeLastFm(), FakeSpotify(), FakeLocator(), FailingJudge())
+    res = r.resolve("Skrude", Event(name="E"))
+    assert res.outcome == "needs_review" and not res.has_songs and len(res.candidates) == 2

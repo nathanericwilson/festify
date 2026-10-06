@@ -56,7 +56,7 @@ class _Picker:
         return True
 
 
-def _find_on_spotify(sp, pick: _Picker, title: str, isrc: str | None, source: str, title_via: str):
+def _find_on_spotify(sp, pick: _Picker, title: str, isrc: str | None, source: str, title_via: str, isrc_only: bool = False):
     if isrc:
         hits = sp.track_by_isrc(isrc)
         if hits:
@@ -64,6 +64,8 @@ def _find_on_spotify(sp, pick: _Picker, title: str, isrc: str | None, source: st
             # An ISRC identifies the recording, so accept it even if the credit is oddly spelled.
             if pick.add(best or hits[0], "isrc", source, require_credit=False):
                 return True
+    if isrc_only:
+        return False
     q = f'track:"{title}" artist:"{pick.name}"'
     for t in sp.search_tracks(q):
         if pick.add(t, title_via, source):
@@ -71,7 +73,9 @@ def _find_on_spotify(sp, pick: _Picker, title: str, isrc: str | None, source: st
     return False
 
 
-def pick_songs(sp, deezer, lastfm, name: str, choice: dict, n: int = 3) -> SongResult:
+def pick_songs(sp, deezer, lastfm, name: str, choice: dict, n: int = 3, strict: bool = False) -> SongResult:
+    """strict=True (name shared by several artists): keep identity - only ISRC matches from the chosen Deezer
+    artist count; no name-based Last.fm/title/Spotify fallbacks that could land on a different same-name artist."""
     pick = _Picker(n, name)
     source = choice.get("source")
     known_sp = choice.get("spotify_id")
@@ -86,11 +90,16 @@ def pick_songs(sp, deezer, lastfm, name: str, choice: dict, n: int = 3) -> SongR
             if pick.full:
                 break
             isrc = deezer.track(t["id"]).get("isrc")
-            _find_on_spotify(sp, pick, t["title"], isrc, "Deezer", "title-search")
+            _find_on_spotify(sp, pick, t["title"], isrc, "Deezer", "title-search", isrc_only=strict)
         if not tops:
             pick.res.notes.append("Deezer has no top tracks for this artist")
 
     # 2) Last.fm top tracks (title + artist search on Spotify)
+    if strict and not pinned and source != "spotify":
+        if not pick.res.songs:
+            pick.res.notes.append("same-name artists: no ISRC-verified songs for the chosen artist")
+        return pick.res
+
     if not pick.full and not pinned and lastfm and lastfm.available and (source == "lastfm" or not pick.res.songs):
         tops = dedupe_tracks(lastfm.top_tracks(name, 25), key=lambda t: t["title"])
         for t in tops:

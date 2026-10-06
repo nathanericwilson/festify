@@ -129,6 +129,8 @@ class Resolver:
             "local_evidence": verdict.get("local_evidence", "unknown"),
             "nonlocal_suspected": bool(verdict.get("nonlocal_suspected")),
             "evidence": chosen.location if chosen else [], "n_candidates": len(cands),
+            "candidates": [{"name": c.name, "url": c.url, "fans": c.fans, "listeners": c.listeners,
+                            "where": (c.location[:2] if c.location else [])} for c in cands] if ambiguous else [],
         }
         if not failed:
             self.cache.set("artists", key, entry)
@@ -144,6 +146,10 @@ class Resolver:
         if not ch:
             return ArtistResult(name, "not_found", entry.get("reason") or "no plausible candidate", **{
                 k: v for k, v in base.items() if k != "reason"})
+        if entry.get("ambiguous") and entry.get("by") == "claude" and entry.get("confidence") != "high":
+            # Not sure enough to guess between same-name artists: ask the user instead of adding wrong songs.
+            return ArtistResult(name, "needs_review", entry.get("reason", ""), chosen=f"{ch['name']} [{ch['source']}] {ch.get('url', '')}".strip(),
+                                candidates=entry.get("candidates", []), **{k: v for k, v in base.items() if k != "reason"})
         outcome = "manual" if entry.get("by") == "manual" else ("picked" if entry.get("ambiguous") else "matched")
         res = ArtistResult(name, outcome, chosen=f"{ch['name']} [{ch['source']}] {ch.get('url', '')}".strip(), **base)
         cached = entry.get("songs")
@@ -153,7 +159,8 @@ class Resolver:
             sr_id = cached.get("spotify_artist_id")
             notes = []
         else:
-            sr = pick_songs(self.sp, self.deezer, self.lastfm, name, ch, self.n)
+            sr = pick_songs(self.sp, self.deezer, self.lastfm, name, ch, self.n,
+                            strict=bool(entry.get("ambiguous")) and not ch.get("pinned"))
             res.songs, res.song_sources, sr_id, notes = sr.songs, sr.sources, sr.spotify_artist_id, sr.notes
             if res.songs and self.cache.get("artists", key) is not None:
                 self.cache.set("artists", key, {**entry, "songs": {

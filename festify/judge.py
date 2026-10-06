@@ -40,7 +40,7 @@ class Judge:
             "lastfm_page_for_this_exact_name (cannot be tied to a specific candidate unless titles overlap)": lastfm_ctx,
         }
         try:
-            out = self.llm.ask_json(SYSTEM, json.dumps(ctx, ensure_ascii=False, indent=1), max_tokens=800)
+            out = self.llm.ask_json(SYSTEM, json.dumps(ctx, ensure_ascii=False, indent=1), max_tokens=800, fast=True)
         except BillingError:
             raise
         except Exception as e:

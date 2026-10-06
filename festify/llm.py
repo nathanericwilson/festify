@@ -51,27 +51,44 @@ def _text(resp) -> str:
 
 
 class LLM:
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, fast_model: str | None = None):
         import anthropic
 
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
+        self.fast_model = fast_model or model
+        self.calls = self.searches = self.in_tokens = self.out_tokens = 0
         self.ask_json = _guard(self.ask_json)
         self.ask_json_web = _guard(self.ask_json_web)
 
-    def ask_json(self, system: str, content, max_tokens: int = 4000):
+    def _track(self, resp):
+        u = getattr(resp, "usage", None)
+        self.calls += 1
+        if u:
+            self.in_tokens += getattr(u, "input_tokens", 0) or 0
+            self.out_tokens += getattr(u, "output_tokens", 0) or 0
+            stu = getattr(u, "server_tool_use", None)
+            self.searches += getattr(stu, "web_search_requests", 0) or 0
+
+    def usage_line(self) -> str:
+        return (f"Claude usage this run: {self.calls} calls, {self.searches} web searches, "
+                f"{self.in_tokens:,} input / {self.out_tokens:,} output tokens")
+
+    def ask_json(self, system: str, content, max_tokens: int = 4000, fast: bool = False):
         if isinstance(content, str):
             content = [{"type": "text", "text": content}]
         resp = self.client.messages.create(
-            model=self.model, max_tokens=max_tokens, system=system,
+            model=self.fast_model if fast else self.model, max_tokens=max_tokens, system=system,
             messages=[{"role": "user", "content": content}],
         )
+        self._track(resp)
         return extract_json(_text(resp))
 
-    def ask_json_web(self, system: str, prompt: str, max_uses: int = 4, max_tokens: int = 4000):
+    def ask_json_web(self, system: str, prompt: str, max_uses: int = 2, max_tokens: int = 2000):
         resp = self.client.messages.create(
-            model=self.model, max_tokens=max_tokens, system=system,
+            model=self.fast_model, max_tokens=max_tokens, system=system,
             tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": max_uses}],
             messages=[{"role": "user", "content": prompt}],
         )
+        self._track(resp)
         return extract_json(_text(resp))

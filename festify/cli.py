@@ -24,7 +24,9 @@ def parse_args(argv=None):
     p.add_argument("--ask", action="store_true", help="pick ambiguous artists yourself")
     p.add_argument("--dry-run", action="store_true", help="show everything, create no playlists")
     p.add_argument("--tracks", type=int, default=3, help="songs per artist (default 3)")
-    p.add_argument("--no-web", action="store_true", help="skip Anthropic web-search location lookups")
+    p.add_argument("--no-web", action="store_true", help="never use web search for location (cheapest)")
+    p.add_argument("--deep", action="store_true", help="also web-search artists with a single match (costly)")
+    p.add_argument("--max-searches", type=int, default=25, help="cap on web-search lookups per run (default 25)")
     p.add_argument("--events-file", help="JSON of events (skips poster reading)")
     p.add_argument("--save-events", help="write the extracted events to this JSON file")
     return p.parse_args(argv)
@@ -42,7 +44,7 @@ def main(argv=None):
         raise SystemExit("Give me at least one Instagram link, screenshot, or folder (or --events-file).")
     if not cfg.anthropic_key:
         raise SystemExit("Missing ANTHROPIC_API_KEY in .env (see README).")
-    llm = LLM(cfg.anthropic_key, cfg.model)
+    llm = LLM(cfg.anthropic_key, cfg.model, cfg.fast_model)
 
     # Step 1: posters -> events
     if args.events_file:
@@ -69,7 +71,8 @@ def main(argv=None):
     if not lastfm.available:
         print("Note: LASTFM_API_KEY not set - using Deezer + Spotify only.")
     sp = Spotify(cfg, write=not args.dry_run)
-    resolver = Resolver(cfg, cache, Deezer(), lastfm, sp, Locator(cfg, cache, llm, use_web=not args.no_web),
+    resolver = Resolver(cfg, cache, Deezer(), lastfm, sp, Locator(cfg, cache, llm, use_web=not args.no_web,
+                                                max_web=args.max_searches, deep=args.deep),
                         Judge(llm, cfg), n_tracks=args.tracks, ask=args.ask)
 
     # Step 6
@@ -91,14 +94,14 @@ def main(argv=None):
             else:
                 link = "(no songs found; playlist not created)"
         print_report(ev, results, link, args.dry_run)
+    print("\n" + llm.usage_line())
 
 
 def run():
     try:
         main()
     except BillingError as e:
-        raise SystemExit(f"
-STOPPED: {e}")
+        raise SystemExit(f"\nSTOPPED: {e}")
 
 
 if __name__ == "__main__":

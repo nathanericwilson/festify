@@ -19,6 +19,7 @@ class Config:
     ig_username: str = ""
     home_region: str = "Utah, Salt Lake City, Provo"
     model: str = "claude-sonnet-5-5"
+    fast_model: str = "claude-haiku-4-5-20251001"
     mb_contact: str = "festify-personal-project"
     redirect_uri: str = REDIRECT_URI
     cache_path: Path = ROOT / ".festify_cache.json"
@@ -36,5 +37,6 @@ def load_config() -> Config:
         ig_username=g("IG_USERNAME"),
         home_region=g("HOME_REGION", "Utah, Salt Lake City, Provo"),
         model=g("FESTIFY_MODEL", "claude-sonnet-5-5"),
+        fast_model=g("FESTIFY_FAST_MODEL", "claude-haiku-4-5-20251001"),
         mb_contact=g("MUSICBRAINZ_CONTACT", "festify-personal-project"),
     )

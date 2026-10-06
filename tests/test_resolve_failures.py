@@ -66,3 +66,29 @@ def test_billing_error_propagates(tmp_path):
 def test_event_name_falls_back_to_venue():
     assert Event.from_dict({"name": "", "venue": "The Cellar"}).name == "The Cellar"
     assert Event.from_dict({}).name == "Show"
+
+
+def test_web_search_only_for_ambiguous_and_capped(tmp_path):
+    from festify.location import Locator
+
+    class Llm:
+        calls = 0
+
+        def ask_json_web(self, *a, **k):
+            Llm.calls += 1
+            return {"results": []}
+
+    class Mb:
+        def lookup(self, name): return []
+
+    loc = Locator(Config(), Cache(tmp_path / "c.json"), Llm(), mb=Mb(), max_web=1, log=lambda *_: None)
+    one = [Candidate("deezer:1", "deezer", "A")]
+    two = [Candidate("deezer:2", "deezer", "B"), Candidate("deezer:3", "deezer", "B")]
+    two2 = [Candidate("deezer:4", "deezer", "C"), Candidate("deezer:5", "deezer", "C")]
+    ev = Event(name="E")
+    loc.annotate("A", one, ev)      # single match: no web search
+    assert Llm.calls == 0
+    loc.annotate("B", two, ev)      # ambiguous: one search
+    assert Llm.calls == 1
+    loc.annotate("C", two2, ev)     # cap of 1 reached: skipped
+    assert Llm.calls == 1

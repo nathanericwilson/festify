@@ -100,7 +100,9 @@ python -m festify poster.png --ask          # choose same-name artists yourself
 | `--dry-run` | Show everything, create nothing |
 | `--ask` | Pick among same-name artists yourself. Shows genres, releases, songs, location evidence, Claude's suggestion and an `open.spotify.com` link so you can check the About tab's "Where people listen". Your picks are cached. |
 | `--tracks N` | Songs per artist (default 3) |
-| `--no-web` | Skip web-search location lookups (cheaper, less evidence) |
+| `--no-web` | Never use web search (cheapest, less evidence) |
+| `--deep` | Also web-search single-match artists (costly) |
+| `--max-searches N` | Cap web-search lookups per run (default 25) |
 | `--events-file F` / `--save-events F` | Reuse/save the extracted events as JSON |
 
 **Inputs:** Instagram post/reel URLs, image files, or folders. Each URL and each folder is one post; loose image files are treated as one post. Duplicate events across posts are merged. A multi-venue festival spread over several slides becomes one event.
@@ -115,7 +117,14 @@ Picks and location findings are stored in `.festify_cache.json`, so each artist 
 
 ## Cost
 
-Poster reading is cents. The main cost is web search (about a cent per artist, first time only) plus Claude calls for picking. Results are cached, so repeat bands are free. To reduce cost: use `--no-web`, set `FESTIFY_MODEL` to a smaller model, or use `--ask`.
+Poster reading uses `FESTIFY_MODEL` (Sonnet-class) and costs cents per post. Everything else is built to be cheap:
+
+- Same-name judging and web search use the small `FESTIFY_FAST_MODEL` (default `claude-haiku-4-5-20251001`).
+- **Web search is the expensive step**, so it only runs for artists with several same-name candidates (use `--deep` to also search single matches), at most 2 searches each, and at most `--max-searches` (default 25) per run.
+- Results are cached, so each artist is paid for once.
+- Every run ends with a usage line (calls, searches, tokens). Check your Anthropic Usage page after the first run; an early version without these limits cost about $7 on one 5-post, 70-artist run.
+
+Cheapest options: `--no-web` (no search at all) and `--ask` (you make the hard calls). Start with one poster before running many.
 
 ## Tests
 

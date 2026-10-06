@@ -73,8 +73,10 @@ def describe_mb(e: dict, tie: str) -> str:
 
 
 class Locator:
-    def __init__(self, cfg, cache, llm, use_web: bool = True, mb: MusicBrainz | None = None, log=print):
+    def __init__(self, cfg, cache, llm, use_web: bool = True, mb: MusicBrainz | None = None, log=print,
+                 max_web: int = 25, deep: bool = False):
         self.cfg, self.cache, self.llm, self.use_web, self.log = cfg, cache, llm, use_web, log
+        self.max_web, self.deep, self.web_calls, self._cap_noted = max_web, deep, 0, False
         self.mb = mb or MusicBrainz(cfg.mb_contact)
 
     def target(self, event) -> str:
@@ -90,10 +92,12 @@ class Locator:
 
     def annotate(self, name: str, cands: list[Candidate], event):
         """Fill cand.location for every candidate (cached per candidate id)."""
+        # Web search is the expensive step: only for same-name ambiguity (or --deep), and capped per run.
+        want_web = self.use_web and self.llm is not None and (len(cands) > 1 or self.deep)
         need = []
         for c in cands:
             cached = self.cache.get("location", c.cid)
-            if cached is not None and (cached.get("web") or not self.use_web):
+            if cached is not None and (cached.get("web") or not want_web):
                 c.location = cached["lines"]
                 c.spotify_id = c.spotify_id or cached.get("spotify_id")
             else:
@@ -114,7 +118,16 @@ class Locator:
                 elif not any(c.cid in _ids_in(x["urls"]) for x in entries):
                     lines[c.cid].append(describe_mb(e, "same name only, not tied to a candidate"))
         web_ok = False
-        if self.use_web and self.llm is not None:
+        if want_web and self.web_calls >= self.max_web:
+            if not self._cap_noted:
+                self._cap_noted = True
+                self.log(f"  ! web-search cap reached ({self.max_web}); remaining ambiguous artists use MusicBrainz only. "
+                         f"Re-run later or raise --max-searches.")
+            want_web_now = False
+        else:
+            want_web_now = want_web
+        if want_web_now:
+            self.web_calls += 1
             try:
                 for r in self._web(name, need, event).get("results", []):
                     if r.get("cid") in lines and (r.get("location") or r.get("evidence")):
@@ -128,7 +141,7 @@ class Locator:
                 self.log(f"  ! web location search failed for {name}: {e}")
         for c in need:
             c.location = lines[c.cid]
-            if web_ok or not self.use_web:  # never persist evidence from a failed search
+            if web_ok or not want_web:  # never persist evidence from a failed or skipped search
                 self.cache.set("location", c.cid, {"lines": c.location, "spotify_id": c.spotify_id, "web": web_ok})
 
     def _web(self, name: str, cands: list[Candidate], event) -> dict:

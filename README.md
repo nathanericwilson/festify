@@ -102,6 +102,8 @@ python -m festify poster.png --ask          # choose same-name artists yourself
 | `--tracks N` | Songs per artist (default 3) |
 | `--no-web` | Never use web search (cheapest, less evidence) |
 | `--deep` | Also web-search single-match artists (costly) |
+| `--free` | Use the Gemini free tier instead of Claude |
+| `--cache FILE` | Use a different cache file (e.g. for testing) |
 | `--max-searches N` | Cap web-search lookups per run (default 25) |
 | `--events-file F` / `--save-events F` | Reuse/save the extracted events as JSON |
 
@@ -127,7 +129,7 @@ Everything except Claude is already free (Deezer, Last.fm, MusicBrainz, Spotify)
 python -m festify poster.png --free --dry-run
 ```
 
-Gemini then reads posters, judges same-name artists and does Google-Search-grounded location lookups. Free tiers have rate and daily limits that Google can change; festify retries, and if a quota is hit it stops cleanly and keeps finished work cached, so just re-run later. Free-tier prompts may be used by Google to improve its products, so don't send anything private (public posters are fine). Poster-reading accuracy on stylized lettering may differ from Claude's.
+Gemini then reads posters, judges same-name artists and does Google-Search-grounded location lookups. Free tiers have rate and daily limits that Google can change; festify retries, and if a quota is hit it stops cleanly and keeps finished work cached, so just re-run later. If the main model is overloaded or unavailable, festify automatically falls back to `gemini-3.7-flash`, then `gemini-3.1-flash-lite`. Free-tier prompts may be used by Google to improve its products, so don't send anything private (public posters are fine). Poster-reading accuracy on stylized lettering may differ from Claude's.
 
 ## Cost
 

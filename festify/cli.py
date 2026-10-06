@@ -24,6 +24,7 @@ def parse_args(argv=None):
     p.add_argument("--ask", action="store_true", help="pick ambiguous artists yourself")
     p.add_argument("--dry-run", action="store_true", help="show everything, create no playlists")
     p.add_argument("--tracks", type=int, default=3, help="songs per artist (default 3)")
+    p.add_argument("--cache", help="cache file path (default .festify_cache.json)")
     p.add_argument("--free", action="store_true", help="use Google Gemini free tier instead of Claude (no paid API)")
     p.add_argument("--no-web", action="store_true", help="never use web search for location (cheapest)")
     p.add_argument("--deep", action="store_true", help="also web-search artists with a single match (costly)")
@@ -75,7 +76,7 @@ def main(argv=None):
     print(f"Found {len(events)} event(s): " + "; ".join(f"{e.name} ({len(e.artists)} artists)" for e in events))
 
     # Steps 2-5
-    cache = Cache(cfg.cache_path)
+    cache = Cache(Path(args.cache) if args.cache else cfg.cache_path)
     lastfm = LastFm(cfg.lastfm_key)
     if not lastfm.available:
         print("Note: LASTFM_API_KEY not set - using Deezer + Spotify only.")

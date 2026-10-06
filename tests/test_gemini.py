@@ -37,7 +37,7 @@ def test_images_and_json_mode_request_shape():
                              {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAA"}}])
     assert out == {"events": []}
     url, body, headers = s.bodies[0]
-    assert url.endswith("/gemini-2.5-flash:generateContent") and headers["x-goog-api-key"] == "k"
+    assert url.endswith("/gemini-3.8-flash:generateContent") and headers["x-goog-api-key"] == "k"
     assert body["contents"][0]["parts"][1] == {"inline_data": {"mime_type": "image/png", "data": "AAA"}}
     assert body["generationConfig"]["responseMimeType"] == "application/json"
     assert g.usage_line().startswith("Gemini usage") and g.in_tokens == 10
@@ -59,7 +59,7 @@ def test_retries_429_then_succeeds(monkeypatch):
 
 def test_persistent_429_is_a_clean_stop(monkeypatch):
     monkeypatch.setattr("festify.gemini.time.sleep", lambda *_: None)
-    g, _ = make([Resp(429)] * 5)
+    g, _ = make([Resp(429)] * 12)
     with pytest.raises(BillingError):
         g.ask_json("s", "p")
 
@@ -68,3 +68,17 @@ def test_bad_key_is_fatal():
     g, _ = make([Resp(403, text="API key not valid")])
     with pytest.raises(BillingError):
         g.ask_json("s", "p")
+
+
+def test_persistent_503_is_a_clean_stop(monkeypatch):
+    monkeypatch.setattr("festify.gemini.time.sleep", lambda *_: None)
+    g, _ = make([Resp(503)] * 12)
+    with pytest.raises(BillingError):
+        g.ask_json("s", "p")
+
+
+def test_overloaded_model_falls_back_to_next_model(monkeypatch):
+    monkeypatch.setattr("festify.gemini.time.sleep", lambda *_: None)
+    g, s = make([Resp(503), Resp(503), ok("{}")])
+    assert g.ask_json("s", "p") == {}
+    assert g.model == "gemini-3.7-flash" and s.bodies[-1][0].endswith("gemini-3.7-flash:generateContent")

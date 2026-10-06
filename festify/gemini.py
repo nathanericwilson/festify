@@ -13,6 +13,7 @@ import requests
 from .llm import BillingError, extract_json
 
 BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+FALLBACKS = ["gemini-3.7-flash", "gemini-3.1-flash-lite"]  # tried in order if the main model is overloaded
 
 
 def _parts(content) -> list[dict]:
@@ -29,8 +30,9 @@ def _parts(content) -> list[dict]:
 
 
 class GeminiLLM:
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash", min_interval: float = 4.0, session=None):
+    def __init__(self, api_key: str, model: str = "gemini-3.8-flash", min_interval: float = 4.0, session=None):
         self.key, self.model, self.min_interval = api_key, model, min_interval
+        self.fallbacks = [m for m in FALLBACKS if m != model]
         self.s = session or requests.Session()
         self.calls = self.searches = self.in_tokens = self.out_tokens = 0
         self._last = 0.0
@@ -40,8 +42,9 @@ class GeminiLLM:
                 f"{self.in_tokens:,} input / {self.out_tokens:,} output tokens")
 
     def _post(self, body: dict) -> dict:
-        url = f"{BASE}/{self.model}:generateContent"
-        for attempt in range(5):
+        fails = 0
+        for attempt in range(9):
+            url = f"{BASE}/{self.model}:generateContent"
             wait = self.min_interval - (time.monotonic() - self._last)
             if wait > 0:
                 time.sleep(wait)
@@ -57,14 +60,24 @@ class GeminiLLM:
             if r.status_code in (400, 401, 403) and ("API key" in r.text or "API_KEY" in r.text or r.status_code in (401, 403)):
                 raise BillingError("Gemini rejected the API key. Check GEMINI_API_KEY in .env "
                                    "(free key: https://aistudio.google.com/apikey).")
-            if r.status_code in (429, 500, 503) and attempt < 4:
-                time.sleep(min(60, 8 * (attempt + 1)))
+            if r.status_code == 404 and self.fallbacks:  # model retired / not available to this account
+                self.model = self.fallbacks.pop(0)
                 continue
-            if r.status_code == 429:
-                raise BillingError("Gemini free-tier quota is used up for now (per-minute or per-day limit). "
-                                   "Wait and re-run; finished work is cached.")
+            if r.status_code in (429, 500, 503):
+                fails += 1
+                if fails >= 2 and self.fallbacks:  # this model is busy: switch to the next free one
+                    self.model, fails = self.fallbacks.pop(0), 0
+                    continue
+                if fails < 4 and attempt < 8:
+                    time.sleep(min(60, 10 * fails))
+                    continue
+                if r.status_code == 429:
+                    raise BillingError("Gemini free-tier quota is used up for now (per-minute or per-day limit). "
+                                       "Wait and re-run; finished work is cached.")
+                raise BillingError("Gemini is overloaded right now (Google-side, temporary). Re-run in a few minutes; "
+                                   "finished work is cached.")
             raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:300]}")
-        raise RuntimeError("Gemini: too many retries")
+        raise BillingError("Gemini is unavailable right now. Re-run in a few minutes; finished work is cached.")
 
     @staticmethod
     def _text(data: dict) -> str:
@@ -77,7 +90,7 @@ class GeminiLLM:
         gen = {"maxOutputTokens": max(max_tokens, 4096)}
         if json_mode:
             gen["responseMimeType"] = "application/json"
-        if "flash" in self.model:
+        if "2.5" in self.model:
             gen["thinkingConfig"] = {"thinkingBudget": 0}
         body = {"systemInstruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": _parts(content)}], "generationConfig": gen}

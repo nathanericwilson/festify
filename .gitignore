@@ -9,3 +9,6 @@ __pycache__/
 dryrun*.log
 events*.json
 .cache
+realrun*.log
+freetest*.log
+*.log

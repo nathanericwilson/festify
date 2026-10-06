@@ -108,6 +108,10 @@ class Resolver:
         self.locator.annotate(name, cands, event)
         verdict = self.judge.pick(name, cands, lf_ctx, event)
         ambiguous = len(cands) > 1
+        failed = bool(verdict.get("judge_failed"))
+        if failed and ambiguous and not self.ask:
+            return ArtistResult(name, "not_found", f"could not decide between {len(cands)} same-name artists "
+                                f"({verdict.get('reason')}); not cached, re-run to retry", n_candidates=len(cands))
         by = "single" if not ambiguous else "claude"
         if ambiguous and self.ask:
             chosen, by = self._prompt(name, cands, verdict), "manual"
@@ -126,7 +130,8 @@ class Resolver:
             "nonlocal_suspected": bool(verdict.get("nonlocal_suspected")),
             "evidence": chosen.location if chosen else [], "n_candidates": len(cands),
         }
-        self.cache.set("artists", key, entry)
+        if not failed:
+            self.cache.set("artists", key, entry)
         return self._from_entry(name, entry)
 
     def _from_entry(self, name, entry) -> ArtistResult:
@@ -145,7 +150,7 @@ class Resolver:
         res.songs, res.song_sources = sr.songs, sr.sources
         sid = sr.spotify_artist_id or ch.get("spotify_id")
         res.spotify_link = spotify_url(sid)
-        if sid and not ch.get("spotify_id"):
+        if sid and not ch.get("spotify_id") and self.cache.get("artists", key) is not None:
             ch["spotify_id"] = sid
             self.cache.set("artists", key, {**entry, "choice": ch})
         if not res.songs:

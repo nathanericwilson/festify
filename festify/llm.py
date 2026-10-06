@@ -26,6 +26,26 @@ def extract_json(text: str):
     return best
 
 
+class BillingError(Exception):
+    """Anthropic account can't be used (no credit / bad key). Fatal: never cache results past this."""
+
+
+def _guard(fn):
+    import anthropic
+
+    def wrapped(*a, **k):
+        try:
+            return fn(*a, **k)
+        except anthropic.AuthenticationError as e:
+            raise BillingError("Anthropic rejected the API key. Check ANTHROPIC_API_KEY in .env.") from e
+        except anthropic.BadRequestError as e:
+            if "credit balance" in str(e).lower():
+                raise BillingError("Your Anthropic credit balance is too low. Add credit at "
+                                   "console.anthropic.com -> Plans & Billing, then re-run (finished work is cached).") from e
+            raise
+    return wrapped
+
+
 def _text(resp) -> str:
     return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
 
@@ -36,6 +56,8 @@ class LLM:
 
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
+        self.ask_json = _guard(self.ask_json)
+        self.ask_json_web = _guard(self.ask_json_web)
 
     def ask_json(self, system: str, content, max_tokens: int = 4000):
         if isinstance(content, str):

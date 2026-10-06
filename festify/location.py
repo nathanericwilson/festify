@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from .http import Http
+from .llm import BillingError
 from .models import Candidate
 from .names import names_match, normalize_name
 
@@ -92,7 +93,7 @@ class Locator:
         need = []
         for c in cands:
             cached = self.cache.get("location", c.cid)
-            if cached is not None:
+            if cached is not None and (cached.get("web") or not self.use_web):
                 c.location = cached["lines"]
                 c.spotify_id = c.spotify_id or cached.get("spotify_id")
             else:
@@ -112,6 +113,7 @@ class Locator:
                             c.spotify_id = m.group(1)
                 elif not any(c.cid in _ids_in(x["urls"]) for x in entries):
                     lines[c.cid].append(describe_mb(e, "same name only, not tied to a candidate"))
+        web_ok = False
         if self.use_web and self.llm is not None:
             try:
                 for r in self._web(name, need, event).get("results", []):
@@ -119,11 +121,15 @@ class Locator:
                         lines[r["cid"]].append(
                             f"web: {r.get('location') or 'location unknown'} - {r.get('evidence', '')} {r.get('url', '')}".strip()
                         )
+                web_ok = True
+            except BillingError:
+                raise
             except Exception as e:  # web search is best-effort
                 self.log(f"  ! web location search failed for {name}: {e}")
         for c in need:
             c.location = lines[c.cid]
-            self.cache.set("location", c.cid, {"lines": c.location, "spotify_id": c.spotify_id})
+            if web_ok or not self.use_web:  # never persist evidence from a failed search
+                self.cache.set("location", c.cid, {"lines": c.location, "spotify_id": c.spotify_id, "web": web_ok})
 
     def _web(self, name: str, cands: list[Candidate], event) -> dict:
         desc = "\n".join(

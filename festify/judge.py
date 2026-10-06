@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 
+from .llm import BillingError
 from .models import Candidate
 from .names import normalize_name
 
@@ -40,8 +41,10 @@ class Judge:
         }
         try:
             out = self.llm.ask_json(SYSTEM, json.dumps(ctx, ensure_ascii=False, indent=1), max_tokens=800)
+        except BillingError:
+            raise
         except Exception as e:
-            return {"pick": None, "confidence": "low", "local_evidence": "unknown",
+            return {"judge_failed": True, "pick": None, "confidence": "low", "local_evidence": "unknown",
                     "nonlocal_suspected": False, "reason": f"judge failed: {e}"}
         valid = {c.cid for c in cands}
         if out.get("pick") not in valid:

@@ -26,7 +26,7 @@ Rules:
   * Anything still unidentifiable goes under "unreadable" (describe where it is on the poster).
   * Handles of unclear type (could be a band or a venue): include only if the poster layout suggests a performer.
 - "date": ISO YYYY-MM-DD if the year is printed or can be sensibly inferred from today's date; otherwise exactly as printed. Use "" if absent.
-- "city": city of the show; "" if absent. "genre_hints": genres printed or clearly implied; [] if none.
+- "city": city of the show ONLY if printed on the poster or stated in the caption (do NOT infer it from @handles or venue names); "" if absent. "genre_hints": genres printed or clearly implied; [] if none.
 - If the images contain several distinct events, return several events."""
 
 
@@ -48,7 +48,7 @@ class Event:
         if isinstance(un, str):
             un = [un] if un.strip() else []
         return Event(
-            name=str(d.get("name") or "").strip(),
+            name=str(d.get("name") or d.get("venue") or "Show").strip(),
             date=str(d.get("date") or "").strip(),
             venue=str(d.get("venue") or "").strip(),
             city=str(d.get("city") or "").strip(),

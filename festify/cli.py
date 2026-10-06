@@ -10,7 +10,7 @@ from .config import load_config
 from .extract import Event, extract_events, merge_events
 from .instagram import collect_inputs
 from .judge import Judge
-from .llm import LLM
+from .llm import LLM, BillingError
 from .location import Locator
 from .report import playlist_description, playlist_name, print_report
 from .resolve import Resolver
@@ -93,5 +93,13 @@ def main(argv=None):
         print_report(ev, results, link, args.dry_run)
 
 
+def run():
+    try:
+        main()
+    except BillingError as e:
+        raise SystemExit(f"
+STOPPED: {e}")
+
+
 if __name__ == "__main__":
-    main()
+    run()

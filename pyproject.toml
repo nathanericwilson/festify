@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = ["spotipy", "anthropic", "instaloader", "python-dotenv", "requests", "pillow"]
 
 [project.scripts]
-festify = "festify.cli:main"
+festify = "festify.cli:run"
 
 [tool.setuptools]
 packages = ["festify"]

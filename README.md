@@ -115,6 +115,20 @@ Link fetching uses [instaloader](https://instaloader.github.io/) and often works
 
 Picks and location findings are stored in `.festify_cache.json`, so each artist is resolved once. Delete an entry (or the file) to re-resolve. `--ask` overrides cached Claude picks and saves yours.
 
+## Free mode (no paid API)
+
+Everything except Claude is already free (Deezer, Last.fm, MusicBrainz, Spotify). To replace Claude too, use Google's **Gemini free tier**:
+
+1. Get a free key at <https://aistudio.google.com/apikey> (no billing needed).
+2. Put it in `.env` as `GEMINI_API_KEY=...`.
+3. Run with `--free` (or set `LLM_PROVIDER=gemini`):
+
+```bash
+python -m festify poster.png --free --dry-run
+```
+
+Gemini then reads posters, judges same-name artists and does Google-Search-grounded location lookups. Free tiers have rate and daily limits that Google can change; festify retries, and if a quota is hit it stops cleanly and keeps finished work cached, so just re-run later. Free-tier prompts may be used by Google to improve its products, so don't send anything private (public posters are fine). Poster-reading accuracy on stylized lettering may differ from Claude's.
+
 ## Cost
 
 Poster reading uses `FESTIFY_MODEL` (Sonnet-class) and costs cents per post. Everything else is built to be cheap:

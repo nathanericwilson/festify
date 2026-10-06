@@ -24,6 +24,7 @@ def parse_args(argv=None):
     p.add_argument("--ask", action="store_true", help="pick ambiguous artists yourself")
     p.add_argument("--dry-run", action="store_true", help="show everything, create no playlists")
     p.add_argument("--tracks", type=int, default=3, help="songs per artist (default 3)")
+    p.add_argument("--free", action="store_true", help="use Google Gemini free tier instead of Claude (no paid API)")
     p.add_argument("--no-web", action="store_true", help="never use web search for location (cheapest)")
     p.add_argument("--deep", action="store_true", help="also web-search artists with a single match (costly)")
     p.add_argument("--max-searches", type=int, default=25, help="cap on web-search lookups per run (default 25)")
@@ -42,9 +43,17 @@ def main(argv=None):
     cfg = load_config()
     if not args.inputs and not args.events_file:
         raise SystemExit("Give me at least one Instagram link, screenshot, or folder (or --events-file).")
-    if not cfg.anthropic_key:
-        raise SystemExit("Missing ANTHROPIC_API_KEY in .env (see README).")
-    llm = LLM(cfg.anthropic_key, cfg.model, cfg.fast_model)
+    if args.free or cfg.provider == "gemini":
+        if not cfg.gemini_key:
+            raise SystemExit("Free mode needs GEMINI_API_KEY in .env (free key: https://aistudio.google.com/apikey).")
+        from .gemini import GeminiLLM
+
+        llm = GeminiLLM(cfg.gemini_key, cfg.gemini_model)
+        print(f"Using Gemini free tier ({cfg.gemini_model}); no paid API calls.")
+    else:
+        if not cfg.anthropic_key:
+            raise SystemExit("Missing ANTHROPIC_API_KEY in .env (see README), or use --free with GEMINI_API_KEY.")
+        llm = LLM(cfg.anthropic_key, cfg.model, cfg.fast_model)
 
     # Step 1: posters -> events
     if args.events_file:

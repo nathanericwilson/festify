@@ -56,6 +56,7 @@ class Event:
             artists=[str(x).strip() for x in d.get("artists") or [] if str(x).strip()],
             unreadable=[str(x) for x in un],
             handle_map=_handle_map(d.get("handle_map")),
+            cover_image=str(d.get("cover_image") or ""),
         )
 
 

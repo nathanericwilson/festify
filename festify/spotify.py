@@ -10,6 +10,9 @@ from spotipy.cache_handler import MemoryCacheHandler
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 
 from .config import Config
+from .llm import BillingError
+
+import time
 
 SCOPES = "playlist-modify-private playlist-modify-public ugc-image-upload"
 
@@ -36,11 +39,25 @@ class Spotify:
         else:  # dry run: search/read only, no login needed
             auth = SpotifyClientCredentials(client_id=cfg.spotify_id, client_secret=cfg.spotify_secret,
                                             cache_handler=MemoryCacheHandler())
-        self.sp = spotipy.Spotify(auth_manager=auth, retries=3, requests_timeout=20)
+        self.sp = spotipy.Spotify(auth_manager=auth, retries=0, status_retries=0, requests_timeout=20)
+
+    def _call(self, fn, *a, **k):
+        """Brief 429s are retried; a long rate-limit ban stops the run cleanly instead of sleeping for hours."""
+        for attempt in range(4):
+            try:
+                return fn(*a, **k)
+            except spotipy.SpotifyException as e:
+                if e.http_status == 429:
+                    if attempt < 3:
+                        time.sleep(5 * (attempt + 1))
+                        continue
+                    raise BillingError("Spotify is rate-limiting this app (in Development Mode this can last many hours). "
+                                       "Everything resolved so far is cached; re-run later to finish.") from e
+                raise
 
     def _get(self, path: str, **params):
         try:
-            return self.sp._get(path, **params) or {}
+            return self._call(self.sp._get, path, **params) or {}
         except spotipy.SpotifyException as e:
             if e.http_status in (400, 404):
                 return {}
@@ -77,11 +94,17 @@ class Spotify:
 
     # --- playlists ------------------------------------------------------
     def create_playlist(self, name: str, description: str) -> dict:
-        return self.sp._post("me/playlists", payload={"name": name, "description": description[:300], "public": False})
+        return self._call(self.sp._post, "me/playlists", payload={"name": name, "description": description[:300], "public": False})
 
     def add_items(self, playlist_id: str, uris: list[str]):
         for i in range(0, len(uris), 100):
-            self.sp._post(f"playlists/{playlist_id}/items", payload={"uris": uris[i : i + 100]})
+            self._call(self.sp._post, f"playlists/{playlist_id}/items", payload={"uris": uris[i : i + 100]})
+
+    def replace_items(self, playlist_id: str, uris: list[str]):
+        """Replace a playlist's contents (PUT /playlists/{id}/items)."""
+        self._call(self.sp._put, f"playlists/{playlist_id}/items", payload={"uris": uris[:100]})
+        if len(uris) > 100:
+            self.add_items(playlist_id, uris[100:])
 
     def set_cover(self, playlist_id: str, image_path: str) -> bool:
         """Upload the post image as the playlist cover (square JPEG, <256KB). Best effort."""
@@ -98,7 +121,7 @@ class Spotify:
                 img.save(buf, "JPEG", quality=q)
                 if buf.tell() < 250_000:
                     break
-            self.sp.playlist_upload_cover_image(playlist_id, base64.b64encode(buf.getvalue()))
+            self._call(self.sp.playlist_upload_cover_image, playlist_id, base64.b64encode(buf.getvalue()))
             return True
         except Exception as e:
             print(f"  ! couldn't set playlist cover: {e}")

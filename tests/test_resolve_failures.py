@@ -92,3 +92,29 @@ def test_web_search_only_for_ambiguous_and_capped(tmp_path):
     assert Llm.calls == 1
     loc.annotate("C", two2, ev)     # cap of 1 reached: skipped
     assert Llm.calls == 1
+
+
+def test_pinned_artist_uses_spotify_only(monkeypatch):
+    from festify.songs import pick_songs
+
+    class Sp:
+        def search_artists(self, *a, **k): return []
+        def track_by_isrc(self, *a): raise AssertionError("pinned artists must not use ISRC/Deezer")
+        def search_tracks(self, q, offset=0):
+            t = {"id": "t", "uri": "spotify:track:t", "name": "Real Song", "album": "",
+                 "artists": [{"id": "RIGHT", "name": "Skrude"}]}
+            w = {"id": "w", "uri": "spotify:track:w", "name": "Wrong", "album": "",
+                 "artists": [{"id": "WRONG", "name": "Skrude"}]}
+            return [t, w] if offset == 0 else []
+        def artist_albums(self, *a, **k): return []
+
+    class Dz:
+        def top_tracks(self, *a, **k): raise AssertionError("pinned artists must not use Deezer")
+
+    class Lf:
+        available = True
+        def top_tracks(self, *a, **k): raise AssertionError("pinned artists must not use Last.fm")
+
+    choice = {"cid": "spotify:RIGHT", "source": "spotify", "spotify_id": "RIGHT", "pinned": True}
+    res = pick_songs(Sp(), Dz(), Lf(), "Skrude", choice, n=3)
+    assert [s.title for s in res.songs] == ["Real Song"]

@@ -1,7 +1,7 @@
 """Steps 2-4: find candidates, gather location evidence, pick (Claude or --ask), then pick songs."""
 from __future__ import annotations
 
-from .models import ArtistResult, Candidate
+from .models import ArtistResult, Candidate, SongPick
 from .names import names_match, normalize_name
 from .songs import pick_songs
 
@@ -146,13 +146,23 @@ class Resolver:
                 k: v for k, v in base.items() if k != "reason"})
         outcome = "manual" if entry.get("by") == "manual" else ("picked" if entry.get("ambiguous") else "matched")
         res = ArtistResult(name, outcome, chosen=f"{ch['name']} [{ch['source']}] {ch.get('url', '')}".strip(), **base)
-        sr = pick_songs(self.sp, self.deezer, self.lastfm, name, ch, self.n)
-        res.songs, res.song_sources = sr.songs, sr.sources
-        sid = sr.spotify_artist_id or ch.get("spotify_id")
+        cached = entry.get("songs")
+        if cached and len(cached["items"]) >= self.n:  # reuse earlier matches: saves Spotify calls on re-runs
+            res.songs = [SongPick(**s) for s in cached["items"][: self.n]]
+            res.song_sources = cached["sources"]
+            sr_id = cached.get("spotify_artist_id")
+            notes = []
+        else:
+            sr = pick_songs(self.sp, self.deezer, self.lastfm, name, ch, self.n)
+            res.songs, res.song_sources, sr_id, notes = sr.songs, sr.sources, sr.spotify_artist_id, sr.notes
+            if res.songs and self.cache.get("artists", key) is not None:
+                self.cache.set("artists", key, {**entry, "songs": {
+                    "items": [s.__dict__ for s in res.songs], "sources": res.song_sources, "spotify_artist_id": sr_id}})
+        sid = sr_id or ch.get("spotify_id")
         res.spotify_link = spotify_url(sid)
         if sid and not ch.get("spotify_id") and self.cache.get("artists", key) is not None:
             ch["spotify_id"] = sid
-            self.cache.set("artists", key, {**entry, "choice": ch})
+            self.cache.set("artists", key, {**self.cache.get("artists", key), "choice": ch})
         if not res.songs:
-            res.outcome, res.reason = "not_found", "; ".join(sr.notes) or "no songs found on Spotify"
+            res.outcome, res.reason = "not_found", "; ".join(notes) or "no songs found on Spotify"
         return res

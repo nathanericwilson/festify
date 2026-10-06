@@ -104,6 +104,8 @@ python -m festify poster.png --ask          # choose same-name artists yourself
 | `--deep` | Also web-search single-match artists (costly) |
 | `--free` | Use the Gemini free tier instead of Claude |
 | `--cache FILE` | Use a different cache file (e.g. for testing) |
+| `--pin "Name=<spotify link>"` | Lock an artist to an exact Spotify artist (fixes wrong same-name picks) |
+| `--refresh` | Re-fill playlists already created, after fixing picks |
 | `--max-searches N` | Cap web-search lookups per run (default 25) |
 | `--events-file F` / `--save-events F` | Reuse/save the extracted events as JSON |
 

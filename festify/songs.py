@@ -79,7 +79,8 @@ def pick_songs(sp, deezer, lastfm, name: str, choice: dict, n: int = 3) -> SongR
         pick.res.spotify_artist_id = known_sp
 
     # 1) Deezer top tracks -> ISRC -> Spotify
-    if source == "deezer":
+    pinned = bool(choice.get("pinned"))
+    if source == "deezer" and not pinned:
         tops = dedupe_tracks(deezer.top_tracks(choice["cid"].split(":", 1)[1], 25), key=lambda t: t["title"])
         for t in tops:
             if pick.full:
@@ -90,7 +91,7 @@ def pick_songs(sp, deezer, lastfm, name: str, choice: dict, n: int = 3) -> SongR
             pick.res.notes.append("Deezer has no top tracks for this artist")
 
     # 2) Last.fm top tracks (title + artist search on Spotify)
-    if not pick.full and lastfm and lastfm.available and (source == "lastfm" or not pick.res.songs):
+    if not pick.full and not pinned and lastfm and lastfm.available and (source == "lastfm" or not pick.res.songs):
         tops = dedupe_tracks(lastfm.top_tracks(name, 25), key=lambda t: t["title"])
         for t in tops:
             if pick.full:

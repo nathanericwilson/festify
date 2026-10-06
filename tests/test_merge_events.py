@@ -55,3 +55,11 @@ def test_handle_map_parsed_and_merged():
     out = merge_events([a, b])[0]
     assert out.handle_map["hit confirm"] == {"handle": "hit.confirm", "inferred": True}
     assert out.handle_map["chain high"]["handle"] == "chain_high"
+
+
+def test_events_roundtrip_through_saved_json():
+    import json
+    e = Event(name="N", date="2026-01-01", artists=["A"], cover_image="x.jpg",
+              handle_map={"a": {"handle": "a_band", "inferred": False}})
+    back = Event.from_dict(json.loads(json.dumps(e.__dict__)))
+    assert back.cover_image == "x.jpg" and back.handle_map == e.handle_map

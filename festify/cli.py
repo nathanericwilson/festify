@@ -11,6 +11,7 @@ from .extract import Event, extract_events, merge_events
 from .instagram import collect_inputs
 from .judge import Judge
 from .llm import LLM, BillingError
+from .names import normalize_name
 from .location import Locator
 from .report import playlist_description, playlist_name, print_report
 from .resolve import Resolver
@@ -24,6 +25,9 @@ def parse_args(argv=None):
     p.add_argument("--ask", action="store_true", help="pick ambiguous artists yourself")
     p.add_argument("--dry-run", action="store_true", help="show everything, create no playlists")
     p.add_argument("--tracks", type=int, default=3, help="songs per artist (default 3)")
+    p.add_argument("--pin", action="append", default=[], metavar="NAME=SPOTIFY_LINK",
+                   help='lock an artist to an exact Spotify artist, e.g. --pin "Skrude=https://open.spotify.com/artist/ID"')
+    p.add_argument("--refresh", action="store_true", help="re-fill playlists that were already created (after fixing picks)")
     p.add_argument("--cache", help="cache file path (default .festify_cache.json)")
     p.add_argument("--free", action="store_true", help="use Google Gemini free tier instead of Claude (no paid API)")
     p.add_argument("--no-web", action="store_true", help="never use web search for location (cheapest)")
@@ -34,6 +38,23 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
+def pin_artists(cache: Cache, pins: list[str]):
+    import re
+
+    for item in pins:
+        name, _, link = item.partition("=")
+        m = re.search(r"artist/(\w+)", link) or re.fullmatch(r"\s*(\w{22})\s*", link)
+        if not name.strip() or not m:
+            raise SystemExit(f'Bad --pin {item!r}. Use: --pin "Artist Name=https://open.spotify.com/artist/<id>"')
+        sid = m.group(1)
+        cache.set("artists", normalize_name(name), {
+            "choice": {"cid": f"spotify:{sid}", "source": "spotify", "name": name.strip(),
+                       "url": f"https://open.spotify.com/artist/{sid}", "spotify_id": sid, "pinned": True},
+            "by": "manual", "ambiguous": False, "reason": "pinned by you", "confidence": "high",
+            "local_evidence": "yes", "nonlocal_suspected": False, "evidence": [], "n_candidates": 1})
+        print(f"Pinned {name.strip()} -> spotify:artist:{sid}")
+
+
 def main(argv=None):
     for s in (sys.stdout, sys.stderr):
         try:
@@ -42,6 +63,10 @@ def main(argv=None):
             pass
     args = parse_args(argv)
     cfg = load_config()
+    if args.pin:
+        pin_artists(Cache(Path(args.cache) if args.cache else cfg.cache_path), args.pin)
+        if not args.inputs and not args.events_file:
+            return
     if not args.inputs and not args.events_file:
         raise SystemExit("Give me at least one Instagram link, screenshot, or folder (or --events-file).")
     if args.free or cfg.provider == "gemini":
@@ -59,7 +84,7 @@ def main(argv=None):
     # Step 1: posters -> events
     if args.events_file:
         raw = json.loads(Path(args.events_file).read_text(encoding="utf-8"))
-        events = [Event.from_dict(d) for d in raw.get("events", raw)]
+        events = [Event.from_dict(d) for d in (raw if isinstance(raw, list) else raw.get("events", []))]
     else:
         events = []
         posts = collect_inputs(args.inputs, cfg.ig_username)
@@ -94,13 +119,21 @@ def main(argv=None):
             results.append(resolver.resolve(a, ev))
         link = "(dry run - no playlist created)"
         if not args.dry_run:
+            pkey = normalize_name(f"{playlist_name(ev)} {ev.venue}")
+            done = cache.get("playlists", pkey)
             uris = [s.uri for r in results for s in r.songs]
-            if uris:
+            if done and args.refresh and uris:
+                sp.replace_items(done["id"], uris)
+                link = f"{done['url']} (refreshed)"
+            elif done:  # already built on an earlier run: never create duplicates
+                link = f"{done['url']} (already created earlier; not duplicated)"
+            elif uris:
                 pl = sp.create_playlist(playlist_name(ev), playlist_description(ev, results))
                 sp.add_items(pl["id"], uris)
                 if ev.cover_image:
                     sp.set_cover(pl["id"], ev.cover_image)
                 link = pl.get("external_urls", {}).get("spotify", pl["id"])
+                cache.set("playlists", pkey, {"id": pl["id"], "url": link})
             else:
                 link = "(no songs found; playlist not created)"
         print_report(ev, results, link, args.dry_run)

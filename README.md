@@ -129,6 +129,18 @@ python -m festify poster.png --ask          # choose same-name artists yourself
 
 Link fetching uses [instaloader](https://instaloader.github.io/) and often works anonymously for public posts, but Instagram can block or rate-limit it at any time. If it does, festify says so; **screenshots always work**. For better odds, run `instaloader -l <your_username>` once to save a login session and set `IG_USERNAME` (a throwaway account is safer than your main one).
 
+### Finding bands through their Instagram
+
+When the poster tags a band's account, festify looks for that band's own Spotify link: first in the Instagram bio and bio links (following a Linktree or website), then in a Linktree with the same name as the handle that links back to the account. A link found this way wins over name-based guessing (your own `--pin` still wins over everything), as long as the Spotify artist's name matches the poster.
+
+Instagram blocks anonymous profile lookups quickly, so for this to work reliably, log in once (ideally with a spare account, since Instagram sometimes flags automated use):
+
+```bash
+instaloader -l YOUR_INSTAGRAM_USERNAME
+```
+
+and set `IG_USERNAME=YOUR_INSTAGRAM_USERNAME` in `.env`. Results are cached per handle, so each account is looked up once. Use `--no-instagram` to turn this off.
+
 ### Cache
 
 Picks and location findings are stored in `.festify_cache.json`, so each artist is resolved once. Delete an entry (or the file) to re-resolve. `--ask` overrides cached Claude picks and saves yours.

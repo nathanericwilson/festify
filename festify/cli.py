@@ -8,6 +8,7 @@ from pathlib import Path
 from .cache import Cache
 from .config import load_config
 from .extract import Event, extract_events, merge_events
+from .identity import HandleLinker
 from .instagram import collect_inputs
 from .judge import Judge
 from .llm import LLM, BillingError
@@ -30,6 +31,8 @@ def parse_args(argv=None):
     p.add_argument("--refresh", action="store_true", help="re-fill playlists that were already created (after fixing picks)")
     p.add_argument("--cache", help="cache file path (default .festify_cache.json)")
     p.add_argument("--free", action="store_true", help="use Google Gemini free tier instead of Claude (no paid API)")
+    p.add_argument("--no-instagram", action="store_true",
+                   help="don't look up tagged bands' Instagram bios / Linktrees for their Spotify link")
     p.add_argument("--no-web", action="store_true", help="never use web search for location (cheapest)")
     p.add_argument("--deep", action="store_true", help="also web-search artists with a single match (costly)")
     p.add_argument("--max-searches", type=int, default=25, help="cap on web-search lookups per run (default 25)")
@@ -136,7 +139,8 @@ def main(argv=None):
     sp = Spotify(cfg, write=not args.dry_run)
     resolver = Resolver(cfg, cache, Deezer(), lastfm, sp, Locator(cfg, cache, llm, use_web=not args.no_web,
                                                 max_web=args.max_searches, deep=args.deep),
-                        Judge(llm, cfg), n_tracks=args.tracks, ask=args.ask)
+                        Judge(llm, cfg), n_tracks=args.tracks, ask=args.ask,
+                        linker=None if args.no_instagram else HandleLinker(cache, cfg.ig_username))
 
     # Step 6
     for ev in events:

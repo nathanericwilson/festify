@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .extract import Event
 from .models import ArtistResult
+from .names import normalize_name
 
 
 def playlist_name(ev: Event) -> str:
@@ -44,7 +45,9 @@ def print_report(ev: Event, results: list[ArtistResult], playlist: str, dry_run:
 
     def f_match(r):
         out(f"  + {r.name}{_tag(ev, r)}: {_songs(r)}")
-        if r.local_evidence != "yes":
+        if r.reason.startswith("Spotify link from @"):
+            out(f"      identity: {r.reason}")
+        elif r.local_evidence != "yes":
             out(f"      (no local evidence found)")
 
     def f_pick(r):
@@ -69,6 +72,9 @@ def print_report(ev: Event, results: list[ArtistResult], playlist: str, dry_run:
 
     def f_miss(r):
         out(f"  - {r.name}{_tag(ev, r)}: {r.reason}")
+        h = ev.handle_map.get(normalize_name(r.name))
+        if h:
+            out(f"      tip: check instagram.com/{h['handle']} for a Spotify link, then pin it")
 
     def f_review(r):
         out(f"  ! {r.name}{_tag(ev, r)}: several artists share this name and I'm not sure which. No songs added.")

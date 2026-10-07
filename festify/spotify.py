@@ -69,6 +69,9 @@ class Spotify:
                 return {}
             raise
 
+    def get_artist(self, artist_id: str) -> dict | None:
+        return self._get(f"artists/{artist_id}") or None
+
     # --- search ---------------------------------------------------------
     def search(self, q: str, type_: str, offset: int = 0) -> list[dict]:
         res = self._get("search", q=q, type=type_, limit=10, offset=offset)  # limit max is 10 now

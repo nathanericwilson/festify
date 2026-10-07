@@ -14,8 +14,9 @@ def spotify_url(sid: str | None) -> str:
 
 class Resolver:
     def __init__(self, cfg, cache, deezer, lastfm, spotify, locator, judge, n_tracks=3, ask=False,
-                 input_fn=input, log=print):
+                 input_fn=input, log=print, linker=None):
         self.cfg, self.cache = cfg, cache
+        self.linker = linker  # finds a band's own Spotify link via its tagged Instagram handle
         self.deezer, self.lastfm, self.sp = deezer, lastfm, spotify
         self.locator, self.judge = locator, judge
         self.n, self.ask, self.input, self.log = n_tracks, ask, input_fn, log
@@ -92,12 +93,41 @@ class Resolver:
         if key in self._run:
             return self._run[key]
         entry = self.cache.get("artists", key)
+        handle = (getattr(event, "handle_map", None) or {}).get(key, {}).get("handle")
+        if handle and self.linker and not (entry and (entry.get("by") == "manual" or entry.get("via_handle") == handle)):
+            linked = self._from_handle(name, key, handle)
+            if linked:
+                self._run[key] = linked
+                return linked
         if entry and not (self.ask and entry.get("ambiguous") and entry.get("by") != "manual"):
             res = self._from_entry(name, entry)
         else:
             res = self._fresh(name, key, event)
         self._run[key] = res
         return res
+
+    def _from_handle(self, name, key, handle) -> ArtistResult | None:
+        """The band's own Instagram links to its Spotify: that beats any name-based guess."""
+        hit = self.linker.find(handle)
+        if not hit:
+            return None
+        art = self.sp.get_artist(hit["spotify_id"])
+        if not art:
+            return None
+        a, b = normalize_name(art.get("name", "")), normalize_name(name)
+        if not (names_match(art.get("name", ""), name) or (a and b and (a in b or b in a))):
+            self.log(f"  ! @{handle} links to Spotify artist '{art.get('name')}', not '{name}'; ignoring that link")
+            return None
+        sid = art["id"]
+        entry = {
+            "choice": {"cid": f"spotify:{sid}", "source": "spotify", "name": art.get("name", name),
+                       "url": spotify_url(sid), "spotify_id": sid, "pinned": True},
+            "by": "instagram", "via_handle": handle, "ambiguous": False, "confidence": "high",
+            "reason": f"Spotify link from @{handle} ({hit['via']})", "local_evidence": "yes",
+            "nonlocal_suspected": False, "evidence": [], "n_candidates": 1,
+        }
+        self.cache.set("artists", key, entry)
+        return self._from_entry(name, entry)
 
     def _fresh(self, name, key, event) -> ArtistResult:
         cands, lf_ctx = self.candidates(name)

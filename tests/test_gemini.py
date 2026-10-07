@@ -82,3 +82,13 @@ def test_overloaded_model_falls_back_to_next_model(monkeypatch):
     g, s = make([Resp(503), Resp(503), ok("{}")])
     assert g.ask_json("s", "p") == {}
     assert g.model == "gemini-3.7-flash" and s.bodies[-1][0].endswith("gemini-3.7-flash:generateContent")
+
+
+def test_search_quota_is_not_fatal_and_fails_fast(monkeypatch):
+    from festify.gemini import SearchUnavailable
+
+    monkeypatch.setattr("festify.gemini.time.sleep", lambda *_: None)
+    g, s = make([Resp(429)])
+    with pytest.raises(SearchUnavailable):
+        g.ask_json_web("s", "p")
+    assert len(s.bodies) == 1  # no retries / model hopping for the search quota

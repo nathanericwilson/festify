@@ -138,6 +138,9 @@ class Locator:
             except BillingError:
                 raise
             except Exception as e:  # web search is best-effort
+                if type(e).__name__ == "SearchUnavailable":
+                    self.use_web = False  # stop trying for the rest of this run; MusicBrainz evidence is still used
+                    self.log("  ! web search quota used up: continuing without web search (less location evidence).")
                 self.log(f"  ! web location search failed for {name}: {e}")
         for c in need:
             c.location = lines[c.cid]

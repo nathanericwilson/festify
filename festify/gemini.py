@@ -29,6 +29,10 @@ def _parts(content) -> list[dict]:
     return out
 
 
+class SearchUnavailable(Exception):
+    """Google Search grounding quota is used up (plain model calls may still work). Not fatal."""
+
+
 class GeminiLLM:
     def __init__(self, api_key: str, model: str = "gemini-3.8-flash", min_interval: float = 4.0, session=None):
         self.key, self.model, self.min_interval = api_key, model, min_interval
@@ -41,7 +45,7 @@ class GeminiLLM:
         return (f"Gemini usage this run (free tier): {self.calls} calls, {self.searches} grounded searches, "
                 f"{self.in_tokens:,} input / {self.out_tokens:,} output tokens")
 
-    def _post(self, body: dict) -> dict:
+    def _post(self, body: dict, search: bool = False) -> dict:
         fails = 0
         for attempt in range(9):
             url = f"{BASE}/{self.model}:generateContent"
@@ -63,6 +67,8 @@ class GeminiLLM:
             if r.status_code == 404 and self.fallbacks:  # model retired / not available to this account
                 self.model = self.fallbacks.pop(0)
                 continue
+            if r.status_code == 429 and search:  # grounding quota is separate; don't burn minutes retrying it
+                raise SearchUnavailable("Google Search grounding quota is used up for now")
             if r.status_code in (429, 500, 503):
                 fails += 1
                 if fails >= 2 and self.fallbacks:  # this model is busy: switch to the next free one
@@ -73,7 +79,7 @@ class GeminiLLM:
                     continue
                 if r.status_code == 429:
                     raise BillingError("Gemini free-tier quota is used up for now (per-minute or per-day limit). "
-                                       "Wait and re-run; finished work is cached.")
+                                       "Wait and re-run; finished work is cached. Google says: " + " ".join(r.text[:500].split()))
                 raise BillingError("Gemini is overloaded right now (Google-side, temporary). Re-run in a few minutes; "
                                    "finished work is cached.")
             raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:300]}")
@@ -105,6 +111,6 @@ class GeminiLLM:
     def ask_json_web(self, system: str, prompt: str, max_uses: int = 2, max_tokens: int = 2000):
         # JSON mode can't be combined with the search tool, so the prompt asks for JSON and we parse it.
         body = self._body(system, prompt, max_tokens, json_mode=False, tools=[{"google_search": {}}])
-        data = self._post(body)
+        data = self._post(body, search=True)
         self.searches += 1
         return extract_json(self._text(data))

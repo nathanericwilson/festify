@@ -87,6 +87,19 @@ python -m festify path/to/poster.png --dry-run
 
 The first real run opens a browser to authorize Spotify; the token is cached locally in `.spotify_token_cache`.
 
+## The app (no terminal needed)
+
+Double-click **`Festify.bat`** (Windows), or run `python -m festify.gui`. A page opens in your browser at `http://127.0.0.1:8765` (only reachable from your own computer):
+
+- paste Instagram links and/or drop screenshots (all dropped images count as one post),
+- tick options (free mode, dry run, refresh, no web search, resume last run, songs per artist),
+- pin wrong bands under "Fix a wrong band",
+- watch the live log; playlist links appear as clickable cards when done.
+
+Every run is saved to `logs/festify_<date>_<time>.log`, and **Copy log** puts the whole log on your clipboard for troubleshooting. Picking between same-name bands interactively (`--ask`) still needs the terminal.
+
+Extracted events are added to `events.json`, so **Resume last run** (or `--events-file events.json`) can refresh any earlier playlist without re-reading posters. Existing playlists are matched even if a poster is read with a slightly different event name, so they aren't duplicated.
+
 ## Usage
 
 ```bash
@@ -107,7 +120,8 @@ python -m festify poster.png --ask          # choose same-name artists yourself
 | `--pin "Name=<spotify link>"` | Lock an artist to an exact Spotify artist (fixes wrong same-name picks) |
 | `--refresh` | Re-fill playlists already created, after fixing picks |
 | `--max-searches N` | Cap web-search lookups per run (default 25) |
-| `--events-file F` / `--save-events F` | Reuse/save the extracted events as JSON |
+| `--events-file F` / `--save-events F` | Reuse / add to the extracted events JSON |
+| `--events-only` | Just read posters and save events (no Spotify) |
 
 **Inputs:** Instagram post/reel URLs, image files, or folders. Each URL and each folder is one post; loose image files are treated as one post. Duplicate events across posts are merged. A multi-venue festival spread over several slides becomes one event.
 

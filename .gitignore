@@ -12,3 +12,4 @@ events*.json
 realrun*.log
 freetest*.log
 *.log
+logs/

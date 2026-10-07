@@ -34,8 +34,26 @@ def parse_args(argv=None):
     p.add_argument("--deep", action="store_true", help="also web-search artists with a single match (costly)")
     p.add_argument("--max-searches", type=int, default=25, help="cap on web-search lookups per run (default 25)")
     p.add_argument("--events-file", help="JSON of events (skips poster reading)")
-    p.add_argument("--save-events", help="write the extracted events to this JSON file")
+    p.add_argument("--save-events", help="add the extracted events to this JSON file (kept across runs)")
+    p.add_argument("--events-only", action="store_true", help="just read the posters and save events; no Spotify")
     return p.parse_args(argv)
+
+
+def find_playlist(cache: Cache, ev: Event) -> tuple[str, dict | None]:
+    """Find the playlist already built for this event, tolerating small naming differences between poster reads."""
+    import difflib
+
+    pkey = normalize_name(f"{playlist_name(ev)} {ev.venue}")
+    hit = cache.get("playlists", pkey)
+    if hit:
+        return pkey, hit
+    name, date = normalize_name(ev.name), normalize_name(ev.date)
+    for k, v in cache.data.get("playlists", {}).items():
+        if date and date not in k:
+            continue
+        if (name and name in k) or difflib.SequenceMatcher(None, k, pkey).ratio() >= 0.7:
+            return k, v
+    return pkey, None
 
 
 def pin_artists(cache: Cache, pins: list[str]):
@@ -94,11 +112,21 @@ def main(argv=None):
             print(f"Reading {post.label} ({len(post.images)} image(s))...")
             events += extract_events(llm, post)
     events = merge_events(events)
-    if args.save_events:
-        Path(args.save_events).write_text(json.dumps([e.__dict__ for e in events], indent=2), encoding="utf-8")
+    if args.save_events and not args.events_file:
+        # Accumulate: keep earlier saved events so "resume" / --refresh can still reach older playlists.
+        path = Path(args.save_events)
+        old = []
+        if path.exists():
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            old = [Event.from_dict(d) for d in (raw if isinstance(raw, list) else raw.get("events", []))]
+        saved = merge_events(old + events)
+        path.write_text(json.dumps([e.__dict__ for e in saved], indent=2), encoding="utf-8")
     if not events:
         raise SystemExit("No events found in those images.")
     print(f"Found {len(events)} event(s): " + "; ".join(f"{e.name} ({len(e.artists)} artists)" for e in events))
+    if args.events_only:
+        print(f"Saved events to {args.save_events or '(nowhere: add --save-events FILE)'}; stopping (--events-only).")
+        return
 
     # Steps 2-5
     cache = Cache(Path(args.cache) if args.cache else cfg.cache_path)
@@ -119,8 +147,7 @@ def main(argv=None):
             results.append(resolver.resolve(a, ev))
         link = "(dry run - no playlist created)"
         if not args.dry_run:
-            pkey = normalize_name(f"{playlist_name(ev)} {ev.venue}")
-            done = cache.get("playlists", pkey)
+            pkey, done = find_playlist(cache, ev)
             uris = list(dict.fromkeys(s.uri for r in results for s in r.songs))
             if done and args.refresh and uris:
                 sp.replace_items(done["id"], uris)

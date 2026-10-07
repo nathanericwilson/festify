@@ -149,13 +149,13 @@ Cheapest options: `--no-web` (no search at all) and `--ask` (you make the hard c
 Many small bands share names with unrelated artists. festify handles this in three ways:
 
 - A name with **one exact match** is accepted. If the evidence suggests it's a different, non-local band, the report flags it ("possibly NOT local") but its songs stay in the playlist.
-- A name with **several same-name artists** only gets songs that are ISRC-verified to the chosen artist. If the picker isn't highly confident, no songs are added and the report lists the candidates under **NEEDS YOUR PICK**.
+- A name with **several same-name artists** only gets songs verifiably by the chosen artist: ISRC matches, or that artist's own Spotify page when it can be tied to them (an ISRC credit, a MusicBrainz link, or a confident pick with only one Spotify artist of that name). If the picker isn't highly confident, no songs are added and the report lists the candidates under **NEEDS YOUR PICK**.
 - You can always override: `--ask` lets you choose interactively, and `--pin "Name=https://open.spotify.com/artist/<id>"` locks an artist to an exact Spotify artist. Then re-run with `--refresh` to update playlists that were already created. Playlists are never duplicated: finished events are remembered in the cache.
 
 ## Troubleshooting and limits
 
-- **Spotify rate limit.** Development Mode apps have strict request limits. If you hit them, Spotify can ban the app for many hours (we saw about 23). festify stops with a clear message instead of waiting; finished work is cached, so re-run later. Matched songs are cached to keep repeat runs small, and a dry run uses Spotify calls too, so don't run many back to back.
-- **Gemini free quota.** Free limits (requests per minute/day, per model) are listed in your AI Studio rate-limit page and can change. festify spaces calls, retries, falls back to other free models, then stops cleanly when a quota is used up. Re-run later.
+- **Spotify rate limit.** Development Mode apps have strict request limits. If you hit them, Spotify can ban the app for many hours (we saw about 23). festify spaces its Spotify calls, caps lookups per artist, and stops with a clear message instead of waiting; finished work is cached, so re-run later. Matched songs are cached to keep repeat runs small, and a dry run uses Spotify calls too, so don't run many back to back.
+- **Gemini free quota.** Free limits (requests per minute/day, per model) are listed in your AI Studio rate-limit page and can change. festify spaces calls, retries, falls back to other free models, then stops cleanly when a quota is used up. Re-run later. Google Search grounding has its own, much smaller free quota; when it runs out festify keeps going without web search (MusicBrainz evidence only) instead of stopping.
 - **Claude billing errors** (no credit or a bad key) also stop the run immediately and are never cached as results.
 - **Instagram blocks.** Use screenshots instead; they always work.
 - **Resume without re-reading posters:** `python -m festify --events-file events.json` (save it first with `--save-events events.json`).

@@ -66,7 +66,7 @@ class Resolver:
         print(f"\n=== Which '{name}'? ({len(cands)} candidates) ===")
         for i, c in enumerate(cands, 1):
             sid = self._spotify_id_for(c)
-            print(f"\n[{i}] {c.name}  ({c.source}) " + ("<- Claude's suggestion" if verdict.get("pick") == c.cid else ""))
+            print(f"\n[{i}] {c.name}  ({c.source}) " + ("<- suggested" if verdict.get("pick") == c.cid else ""))
             print(f"    genres:   {', '.join(c.genres) or '-'}")
             print(f"    releases: {', '.join(c.releases[:5]) or '-'}")
             print(f"    songs:    {', '.join(c.songs[:5]) or '-'}")
@@ -76,9 +76,9 @@ class Resolver:
                 print(f"    location: {line}")
             print(f"    Spotify:  {spotify_url(sid) or '(not found; search: https://open.spotify.com/search/' + name.replace(' ', '%20') + ')'}")
             print(f"    Deezer/other: {c.url}")
-        print(f"\nClaude: {verdict.get('reason', '')}")
+        print(f"\nSuggestion: {verdict.get('reason', '')}")
         while True:
-            ans = self.input(f"Pick 1-{len(cands)}, 0 = {NONE_LABEL}, Enter = Claude's suggestion: ").strip()
+            ans = self.input(f"Pick 1-{len(cands)}, 0 = {NONE_LABEL}, Enter = suggestion: ").strip()
             if ans == "" and verdict.get("pick"):
                 return next(c for c in cands if c.cid == verdict["pick"])
             if ans == "0" or (ans == "" and not verdict.get("pick")):
@@ -160,7 +160,8 @@ class Resolver:
             notes = []
         else:
             sr = pick_songs(self.sp, self.deezer, self.lastfm, name, ch, self.n,
-                            strict=bool(entry.get("ambiguous")) and not ch.get("pinned"))
+                            strict=bool(entry.get("ambiguous")) and not ch.get("pinned"),
+                            confident=entry.get("confidence") == "high" or entry.get("by") == "manual")
             res.songs, res.song_sources, sr_id, notes = sr.songs, sr.sources, sr.spotify_artist_id, sr.notes
             if res.songs and self.cache.get("artists", key) is not None:
                 self.cache.set("artists", key, {**entry, "songs": {

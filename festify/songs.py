@@ -73,10 +73,14 @@ def _find_on_spotify(sp, pick: _Picker, title: str, isrc: str | None, source: st
     return False
 
 
-def pick_songs(sp, deezer, lastfm, name: str, choice: dict, n: int = 3, strict: bool = False) -> SongResult:
+def pick_songs(sp, deezer, lastfm, name: str, choice: dict, n: int = 3, strict: bool = False,
+               confident: bool = False) -> SongResult:
     """strict=True (name shared by several artists): keep identity - only ISRC matches from the chosen Deezer
-    artist count; no name-based Last.fm/title/Spotify fallbacks that could land on a different same-name artist."""
+    artist count; no name-based Last.fm/title fallbacks that could land on a different same-name artist.
+    A Spotify-only fallback is still allowed when the Spotify artist is tied to this exact artist (ISRC credit or
+    MusicBrainz link), or when the pick was confident and Spotify has exactly one artist with this name."""
     pick = _Picker(n, name)
+    tries = max(2 * n + 2, 6)  # cap lookups per source: tiny bands often aren't on Spotify, don't burn the rate limit
     source = choice.get("source")
     known_sp = choice.get("spotify_id")
     if known_sp:
@@ -86,7 +90,7 @@ def pick_songs(sp, deezer, lastfm, name: str, choice: dict, n: int = 3, strict: 
     pinned = bool(choice.get("pinned"))
     if source == "deezer" and not pinned:
         tops = dedupe_tracks(deezer.top_tracks(choice["cid"].split(":", 1)[1], 25), key=lambda t: t["title"])
-        for t in tops:
+        for t in tops[:tries]:
             if pick.full:
                 break
             isrc = deezer.track(t["id"]).get("isrc")
@@ -96,13 +100,21 @@ def pick_songs(sp, deezer, lastfm, name: str, choice: dict, n: int = 3, strict: 
 
     # 2) Last.fm top tracks (title + artist search on Spotify)
     if strict and not pinned and source != "spotify":
+        sid = pick.res.spotify_artist_id  # set from an ISRC credit or a MusicBrainz-linked ID: tied to this artist
+        if not pick.full and not sid and confident:
+            exact = [a for a in sp.search_artists(name, pages=1) if names_match(a.get("name", ""), name)]
+            if len(exact) == 1:
+                sid = exact[0]["id"]
+        if not pick.full and sid:
+            pick.res.spotify_artist_id = sid
+            _spotify_only(sp, pick, sid)
         if not pick.res.songs:
-            pick.res.notes.append("same-name artists: no ISRC-verified songs for the chosen artist")
+            pick.res.notes.append("same-name artists: no songs verifiably by the chosen artist")
         return pick.res
 
     if not pick.full and not pinned and lastfm and lastfm.available and (source == "lastfm" or not pick.res.songs):
         tops = dedupe_tracks(lastfm.top_tracks(name, 25), key=lambda t: t["title"])
-        for t in tops:
+        for t in tops[:tries]:
             if pick.full:
                 break
             _find_on_spotify(sp, pick, t["title"], None, "Last.fm", "lastfm-title")
@@ -135,7 +147,7 @@ def _spotify_only(sp, pick: _Picker, sid: str):
         pick.add(t, "spotify-search", "Spotify", require_credit=False)
     if pick.full:
         return
-    for alb in sp.artist_albums(sid):
+    for alb in sp.artist_albums(sid)[:5]:
         for t in sp.album_tracks(alb["id"], alb.get("name", "")):
             if pick.full:
                 return

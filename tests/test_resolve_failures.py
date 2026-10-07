@@ -154,3 +154,52 @@ def test_low_confidence_ambiguous_pick_needs_review(tmp_path):
     r = Resolver(Config(), cache, FakeDeezer(), FakeLastFm(), FakeSpotify(), FakeLocator(), FailingJudge())
     res = r.resolve("Skrude", Event(name="E"))
     assert res.outcome == "needs_review" and not res.has_songs and len(res.candidates) == 2
+
+
+class _NoDeezerSongs:
+    def top_tracks(self, *a, **k): return []
+    def track(self, *a): return {}
+
+
+def _sp_with(artists):
+    class Sp:
+        def search_artists(self, *a, **k): return artists
+        def track_by_isrc(self, *a): return []
+        def search_tracks(self, q, offset=0):
+            if offset:
+                return []
+            return [{"id": "s", "uri": "spotify:track:s", "name": "Song A", "album": "",
+                     "artists": [{"id": "ONLY", "name": "Jacob T. Skeen"}]}]
+        def artist_albums(self, *a, **k): return []
+    return Sp()
+
+
+def test_confident_same_name_pick_falls_back_to_unique_spotify_artist():
+    from festify.songs import pick_songs
+    sp = _sp_with([{"id": "ONLY", "name": "Jacob T. Skeen"}])
+    res = pick_songs(sp, _NoDeezerSongs(), None, "Jacob T. Skeen", {"cid": "deezer:1", "source": "deezer"},
+                     n=3, strict=True, confident=True)
+    assert [s.title for s in res.songs] == ["Song A"]
+
+
+def test_unconfident_or_ambiguous_spotify_gets_no_fallback():
+    from festify.songs import pick_songs
+    choice = {"cid": "deezer:1", "source": "deezer"}
+    one = _sp_with([{"id": "ONLY", "name": "Jacob T. Skeen"}])
+    two = _sp_with([{"id": "A", "name": "Jacob T. Skeen"}, {"id": "B", "name": "Jacob T. Skeen"}])
+    assert pick_songs(one, _NoDeezerSongs(), None, "Jacob T. Skeen", choice, strict=True, confident=False).songs == []
+    assert pick_songs(two, _NoDeezerSongs(), None, "Jacob T. Skeen", choice, strict=True, confident=True).songs == []
+
+
+def test_deezer_lookups_are_capped():
+    from festify.songs import pick_songs
+
+    class Dz:
+        calls = 0
+        def top_tracks(self, *a, **k): return [{"id": i, "title": f"T{i}"} for i in range(25)]
+        def track(self, tid):
+            Dz.calls += 1
+            return {"isrc": None}
+
+    pick_songs(_sp_with([]), Dz(), None, "Nobody", {"cid": "deezer:1", "source": "deezer"}, n=3, strict=True)
+    assert Dz.calls <= 8

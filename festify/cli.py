@@ -121,9 +121,10 @@ def main(argv=None):
         if not args.dry_run:
             pkey = normalize_name(f"{playlist_name(ev)} {ev.venue}")
             done = cache.get("playlists", pkey)
-            uris = [s.uri for r in results for s in r.songs]
+            uris = list(dict.fromkeys(s.uri for r in results for s in r.songs))
             if done and args.refresh and uris:
                 sp.replace_items(done["id"], uris)
+                sp.update_description(done["id"], playlist_description(ev, results))
                 link = f"{done['url']} (refreshed)"
             elif done:  # already built on an earlier run: never create duplicates
                 link = f"{done['url']} (already created earlier; not duplicated)"

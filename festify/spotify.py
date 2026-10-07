@@ -41,9 +41,15 @@ class Spotify:
                                             cache_handler=MemoryCacheHandler())
         self.sp = spotipy.Spotify(auth_manager=auth, retries=0, status_retries=0, requests_timeout=20)
 
+    MIN_INTERVAL = 0.35  # seconds between calls: bursts are what trip Development Mode's rate limit
+
     def _call(self, fn, *a, **k):
         """Brief 429s are retried; a long rate-limit ban stops the run cleanly instead of sleeping for hours."""
         for attempt in range(4):
+            wait = self.MIN_INTERVAL - (time.monotonic() - getattr(self, "_last", 0.0))
+            if wait > 0:
+                time.sleep(wait)
+            self._last = time.monotonic()
             try:
                 return fn(*a, **k)
             except spotipy.SpotifyException as e:
@@ -99,6 +105,9 @@ class Spotify:
     def add_items(self, playlist_id: str, uris: list[str]):
         for i in range(0, len(uris), 100):
             self._call(self.sp._post, f"playlists/{playlist_id}/items", payload={"uris": uris[i : i + 100]})
+
+    def update_description(self, playlist_id: str, description: str):
+        self._call(self.sp._put, f"playlists/{playlist_id}", payload={"description": description[:300]})
 
     def replace_items(self, playlist_id: str, uris: list[str]):
         """Replace a playlist's contents (PUT /playlists/{id}/items)."""

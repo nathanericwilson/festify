@@ -68,8 +68,13 @@ class HandleLinker:
             return []
         except Exception as e:
             self.ig_ok = False
-            self.log(f"  ! Instagram won't show profiles right now ({type(e).__name__}); skipping bio links this run. "
-                     f"A saved login session helps: run `instaloader -l <username>` and set IG_USERNAME.")
+            limited = "429" in str(e)
+            if self._instaloader().context.is_logged_in:
+                why = "rate-limiting profile lookups (usually clears within an hour or so)" if limited else type(e).__name__
+                self.log(f"  ! Instagram is {why}; skipping bio links this run. Re-run later; results are cached.")
+            else:
+                self.log(f"  ! Instagram won't show profiles without a login ({type(e).__name__}); skipping bio links "
+                         f"this run. See README: 'Finding bands through their Instagram'.")
             return None
         links = []
         try:

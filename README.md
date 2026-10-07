@@ -139,7 +139,15 @@ Instagram blocks anonymous profile lookups quickly, so for this to work reliably
 instaloader -l YOUR_INSTAGRAM_USERNAME
 ```
 
-and set `IG_USERNAME=YOUR_INSTAGRAM_USERNAME` in `.env`. Results are cached per handle, so each account is looked up once. Use `--no-instagram` to turn this off.
+and set `IG_USERNAME=YOUR_INSTAGRAM_USERNAME` in `.env`.
+
+If that login fails (Instagram often refuses it for new accounts with a bare "fail"), log in to instagram.com in **Firefox** instead, close Firefox, and import that login (no password typed in the terminal):
+
+```bash
+instaloader --load-cookies firefox
+```
+
+Even when logged in, Instagram may rate-limit profile lookups for a while after many requests; festify then skips them for that run and you can re-run later. Results are cached per handle, so each account is looked up once. Use `--no-instagram` to turn this off.
 
 ### Cache
 

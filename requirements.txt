@@ -5,3 +5,4 @@ python-dotenv>=1.0
 requests>=2.31
 pillow>=10.0
 pytest>=8.0
+browser_cookie3>=0.19  # optional: import an Instagram login from Firefox

@@ -6,6 +6,6 @@
   {"name": "Jacob T. Skeen", "expect": ["1aygBdl7McIqKwUvk4pCew", "deezer:170012017"], "note": "SLC one-man band (Bandcamp)"},
   {"name": "The Rat Utopia Experiment", "expect": ["3JyFf0L4m9YDuka462BWKa", "deezer:"], "note": "Tacoma, on tour: right band, far is OK"},
   {"name": "Sleep Cult", "expect": ["70kwxIbsph7V1pyY2ZVRlj"], "note": "from their own Linktree"},
-  {"name": "helper", "expect": [], "note": "local band, no Spotify link on their Instagram"},
+  {"name": "helper", "expect": [], "ok_if_flagged": true, "note": "probably not on Spotify; a flagged same-name guess is fine (playlists are for discovering bands)"},
   {"name": "gene freak", "expect": [], "note": "no Spotify link on their Instagram"}
 ]

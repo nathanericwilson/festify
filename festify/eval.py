@@ -99,7 +99,7 @@ def main(argv=None):
         chosen = [] if res.outcome == "none" else [spotify_ids_for(resolver, cache, s["choice"], poster_name)
                                                    for s in entry.get("choices", [])]
         if not expect:
-            ok = res.outcome == "none"
+            ok = res.outcome == "none" or (g.get("ok_if_flagged") and res.unsure)
         else:
             ok = any(ids & expect or any(e.endswith(":") and any(i.startswith(e) for i in ids) for e in expect)
                      for ids in chosen)

@@ -72,6 +72,10 @@ class Spotify:
     def get_artist(self, artist_id: str) -> dict | None:
         return self._get(f"artists/{artist_id}") or None
 
+    def release_artists(self, kind: str, release_id: str) -> list[dict]:
+        """Artists credited on an album or track (single-item endpoints are allowed in Development Mode)."""
+        return (self._get(f"{kind}s/{release_id}") or {}).get("artists") or []
+
     # --- search ---------------------------------------------------------
     def search(self, q: str, type_: str, offset: int = 0) -> list[dict]:
         res = self._get("search", q=q, type=type_, limit=10, offset=offset)  # limit max is 10 now

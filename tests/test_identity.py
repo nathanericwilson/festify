@@ -50,45 +50,41 @@ def test_miss_not_cached_when_instagram_blocked(tmp_path):
     assert c.get("handles", "band") == {}
 
 
-class _Linker:
-    def __init__(self, hit): self.hit = hit
-    def find(self, handle): return self.hit
+def test_profile_read_through_page_reader(tmp_path):
+    page = ("* [442 followers](#)\n\nDisillusioned\n\nSLC Shoegaze\n\n[linktr.ee/disillusioned]"
+            "(https://l.instagram.com/?u=https%3A%2F%2Flinktr.ee%2Fdisillusioned&e=AUB)")
+
+    class Reader:
+        def extract(self, url):
+            assert url == "https://www.instagram.com/disillusioned_band/"
+            return page
+
+    s = Sess({"https://linktr.ee/disillusioned": Resp(200, f'"https://open.spotify.com/artist/{SP_ID}"')})
+    hl = HandleLinker(Cache(tmp_path / "c.json"), session=s, web=Reader())
+    assert hl.find("disillusioned_band") == {"spotify_id": SP_ID, "via": "link in Instagram bio (linktr.ee)"}
 
 
-class _Sp:
-    def __init__(self, name): self.name = name
-    def get_artist(self, aid): return {"id": aid, "name": self.name}
-    def search_tracks(self, q, offset=0):
-        return [] if offset else [{"id": "t", "uri": "spotify:track:t", "name": "Real Song", "album": "",
-                                   "artists": [{"id": SP_ID, "name": self.name}]}]
-    def artist_albums(self, *a, **k): return []
-    def search_artists(self, *a, **k): return []
+def test_album_link_in_bio_resolves_to_its_artist(tmp_path):
+    album = "1yMOsgDs5OHA3fiDOVNGfX"
+    hl = HandleLinker(Cache(tmp_path / "c.json"), session=Sess({}),
+                      ig_fetch=lambda h: [f"utah emotional music open.spotify.com/album/{album}?si=1"])
+
+    class Sp:
+        def release_artists(self, kind, rid):
+            assert (kind, rid) == ("album", album)
+            return [{"id": "OTHERxxxxxxxxxxxxxxxxx", "name": "Someone"}, {"id": SP_ID, "name": "World Record"}]
+
+        def get_artist(self, sid):
+            return {"id": sid, "name": "World Record"}
+
+    r = Resolver(Config(), Cache(tmp_path / "r.json"), None, None, Sp(), None, None, linker=hl, log=lambda *_: None)
+    assert r._linked("World Record", "world_record_band")["choices"][0]["choice"]["spotify_id"] == SP_ID
 
 
-def _resolver(tmp_path, linker, sp):
-    return Resolver(Config(), Cache(tmp_path / "c.json"), None, None, sp, None, None, linker=linker, log=lambda *_: None)
-
-
-def test_handle_link_beats_cached_guess(tmp_path):
-    r = _resolver(tmp_path, _Linker({"spotify_id": SP_ID, "via": "Instagram bio"}), _Sp("World Record"))
-    r.cache.set("artists", "world record", {"choice": None, "by": "claude", "reason": "no plausible candidate"})
-    ev = Event(name="Show", handle_map={"world record": {"handle": "world_record_band", "inferred": False}})
-    res = r.resolve("world record", ev)
-    assert res.has_songs and res.songs[0].title == "Real Song"
-    assert r.cache.get("artists", "world record")["by"] == "instagram"
-
-
-def test_handle_link_to_differently_named_artist_is_ignored(tmp_path):
-    r = _resolver(tmp_path, _Linker({"spotify_id": SP_ID, "via": "Instagram bio"}), _Sp("Singer's Solo Project"))
-    r.cache.set("artists", "world record", {"choice": None, "by": "claude", "reason": "none"})
-    ev = Event(name="Show", handle_map={"world record": {"handle": "world_record_band", "inferred": False}})
-    assert r.resolve("world record", ev).outcome == "not_found"
-
-
-def test_manual_pin_wins_over_handle(tmp_path):
-    r = _resolver(tmp_path, _Linker({"spotify_id": "OTHER", "via": "Instagram bio"}), _Sp("World Record"))
-    r.cache.set("artists", "world record", {"choice": {"cid": f"spotify:{SP_ID}", "source": "spotify", "name": "World Record",
-                                                       "spotify_id": SP_ID, "pinned": True}, "by": "manual"})
-    ev = Event(name="Show", handle_map={"world record": {"handle": "world_record_band", "inferred": False}})
-    r.resolve("world record", ev)
-    assert r.cache.get("artists", "world record")["by"] == "manual"
+def test_find_handle_from_search_results(tmp_path):
+    from festify.websearch import WebSearch
+    w = WebSearch("", Cache(tmp_path / "c.json"))
+    w.search = lambda *a, **k: [{"url": "https://www.instagram.com/p/X", "title": "show",
+                                 "content": "163 likes - disillusioned_band on September 18: disillusioned rules"}]
+    assert w.find_handle("Disillusioned", ["Utah"]) == "disillusioned_band"
+    assert w.find_handle("Helper", ["Utah"]) is None

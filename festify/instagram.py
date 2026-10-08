@@ -57,7 +57,8 @@ def fetch_instagram(url: str, ig_username: str = "") -> PostInput:
             p = tmp / f"{shortcode}_{i}.jpg"
             p.write_bytes(r.content)
             paths.append(p)
-        handles = list(dict.fromkeys([*post.tagged_users, *post.caption_mentions]))
+        # the poster's own account is often one of the bands (it posts its own show)
+        handles = list(dict.fromkeys([*post.tagged_users, *post.caption_mentions, post.owner_username]))
         return PostInput(label=url, images=paths, caption=post.caption or "", handles=handles)
     except IGFetchError:
         raise

@@ -1,0 +1,11 @@
+[
+  {"name": "Skrude", "expect": ["4zlaEaIU2pqKnTj5RZ0bQb"], "note": "SLC hardcore; user-confirmed"},
+  {"name": "world record", "expect": ["1sLV65Y5JPvcLSADaDE5uK"], "note": "Utah emo; user-confirmed"},
+  {"name": "disillusioned", "expect": ["5jPQBEBzG6rWHa4M5H9lGY"], "note": "user-confirmed"},
+  {"name": "Little Moon", "expect": ["1sjo4z4OsaxPPsPiVnM0Jp", "deezer:9275306"], "note": "Springville UT (MusicBrainz-linked)"},
+  {"name": "Jacob T. Skeen", "expect": ["1aygBdl7McIqKwUvk4pCew", "deezer:170012017"], "note": "SLC one-man band (Bandcamp)"},
+  {"name": "The Rat Utopia Experiment", "expect": ["3JyFf0L4m9YDuka462BWKa", "deezer:"], "note": "Tacoma, on tour: right band, far is OK"},
+  {"name": "Sleep Cult", "expect": ["70kwxIbsph7V1pyY2ZVRlj"], "note": "from their own Linktree"},
+  {"name": "helper", "expect": [], "note": "local band, no Spotify link on their Instagram"},
+  {"name": "gene freak", "expect": [], "note": "no Spotify link on their Instagram"}
+]

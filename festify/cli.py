@@ -1,51 +1,76 @@
+"""festify command line. The app (festify.gui) runs this same code."""
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
+import re
 import sys
 from pathlib import Path
 
 from .cache import Cache
 from .config import load_config
 from .extract import Event, extract_events, merge_events
+from .geo import Geo
 from .identity import HandleLinker
 from .instagram import collect_inputs
 from .judge import Judge
-from .llm import LLM, BillingError
-from .names import normalize_name
+from .llm import BillingError
 from .location import Locator
+from .names import normalize_name
 from .report import playlist_description, playlist_name, print_report
-from .resolve import Resolver
+from .resolve import Resolver, pin_entry
 from .sources import Deezer, LastFm
 from .spotify import Spotify
+from .websearch import WebSearch
 
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(prog="festify", description="Turn concert posters into Spotify playlists.")
     p.add_argument("inputs", nargs="*", help="Instagram post/reel URLs, screenshot images, or folders")
-    p.add_argument("--ask", action="store_true", help="pick ambiguous artists yourself")
     p.add_argument("--dry-run", action="store_true", help="show everything, create no playlists")
     p.add_argument("--tracks", type=int, default=3, help="songs per artist (default 3)")
     p.add_argument("--pin", action="append", default=[], metavar="NAME=SPOTIFY_LINK",
-                   help='lock an artist to an exact Spotify artist, e.g. --pin "Skrude=https://open.spotify.com/artist/ID"')
-    p.add_argument("--refresh", action="store_true", help="re-fill playlists that were already created (after fixing picks)")
-    p.add_argument("--cache", help="cache file path (default .festify_cache.json)")
-    p.add_argument("--free", action="store_true", help="use Google Gemini free tier instead of Claude (no paid API)")
-    p.add_argument("--no-instagram", action="store_true",
-                   help="don't look up tagged bands' Instagram bios / Linktrees for their Spotify link")
-    p.add_argument("--no-web", action="store_true", help="never use web search for location (cheapest)")
-    p.add_argument("--deep", action="store_true", help="also web-search artists with a single match (costly)")
-    p.add_argument("--max-searches", type=int, default=25, help="cap on web-search lookups per run (default 25)")
-    p.add_argument("--events-file", help="JSON of events (skips poster reading)")
-    p.add_argument("--save-events", help="add the extracted events to this JSON file (kept across runs)")
-    p.add_argument("--events-only", action="store_true", help="just read the posters and save events; no Spotify")
+                   help='lock a band to an exact Spotify artist, e.g. --pin "Skrude=https://open.spotify.com/artist/ID"')
+    p.add_argument("--events-file", help="use saved events (skips reading posters)")
+    p.add_argument("--save-events", help="add the events read from posters to this JSON file")
+    p.add_argument("--events-only", action="store_true", help="just read posters and save events")
+    p.add_argument("--claude", action="store_true", help="use the paid Claude API instead of free Gemini")
+    p.add_argument("--no-instagram", action="store_true", help="skip bands' Instagram bio / Linktree lookups")
+    p.add_argument("--no-search", action="store_true", help="skip Tavily web search")
+    p.add_argument("--no-geocode", action="store_true", help="skip OpenStreetMap distance lookups")
+    p.add_argument("--max-searches", type=int, default=30, help="web searches per run (default 30)")
+    p.add_argument("--cache", help="cache file (default .festify_cache.json)")
     return p.parse_args(argv)
 
 
-def find_playlist(cache: Cache, ev: Event) -> tuple[str, dict | None]:
-    """Find the playlist already built for this event, tolerating small naming differences between poster reads."""
-    import difflib
+def make_llm(cfg, use_claude: bool):
+    if use_claude:
+        if not cfg.anthropic_key:
+            raise SystemExit("--claude needs ANTHROPIC_API_KEY in .env.")
+        from .llm import LLM
 
+        return LLM(cfg.anthropic_key, cfg.model, cfg.fast_model)
+    if not cfg.gemini_key:
+        raise SystemExit("Needs GEMINI_API_KEY in .env (free key: https://aistudio.google.com/apikey).")
+    from .gemini import GeminiLLM
+
+    return GeminiLLM(cfg.gemini_key, cfg.gemini_model)
+
+
+def load_events(path: str) -> list[Event]:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return [Event.from_dict(d) for d in (raw if isinstance(raw, list) else raw.get("events", []))]
+
+
+def save_events(path: str, events: list[Event]):
+    p = Path(path)
+    old = load_events(path) if p.exists() else []  # accumulate so older playlists can still be refreshed
+    p.write_text(json.dumps([e.__dict__ for e in merge_events(old + events)], indent=2), encoding="utf-8")
+
+
+def find_playlist(cache: Cache, ev: Event) -> tuple[str, dict | None]:
+    """The playlist already built for this event, tolerating small naming differences between poster reads."""
     pkey = normalize_name(f"{playlist_name(ev)} {ev.venue}")
     hit = cache.get("playlists", pkey)
     if hit:
@@ -60,20 +85,22 @@ def find_playlist(cache: Cache, ev: Event) -> tuple[str, dict | None]:
 
 
 def pin_artists(cache: Cache, pins: list[str]):
-    import re
-
     for item in pins:
         name, _, link = item.partition("=")
         m = re.search(r"artist/(\w+)", link) or re.fullmatch(r"\s*(\w{22})\s*", link)
         if not name.strip() or not m:
             raise SystemExit(f'Bad --pin {item!r}. Use: --pin "Artist Name=https://open.spotify.com/artist/<id>"')
-        sid = m.group(1)
-        cache.set("artists", normalize_name(name), {
-            "choice": {"cid": f"spotify:{sid}", "source": "spotify", "name": name.strip(),
-                       "url": f"https://open.spotify.com/artist/{sid}", "spotify_id": sid, "pinned": True},
-            "by": "manual", "ambiguous": False, "reason": "pinned by you", "confidence": "high",
-            "local_evidence": "yes", "nonlocal_suspected": False, "evidence": [], "n_candidates": 1})
-        print(f"Pinned {name.strip()} -> spotify:artist:{sid}")
+        cache.set("artists", normalize_name(name), pin_entry(name.strip(), m.group(1)))
+        print(f"Pinned {name.strip()} -> spotify:artist:{m.group(1)}")
+
+
+def build_resolver(cfg, cache, llm, sp, args, log=print) -> Resolver:
+    web = None if args.no_search or not cfg.tavily_key else WebSearch(cfg.tavily_key, cache, args.max_searches, log=log)
+    geo = Geo(cache, cfg.mb_contact, enabled=not args.no_geocode, log=log)
+    locator = Locator(cfg, cache, llm, geo, web, log=log)
+    return Resolver(cfg, cache, Deezer(), LastFm(cfg.lastfm_key), sp, locator, Judge(llm, cfg, cache),
+                    n_tracks=args.tracks, log=log, web=web,
+                    linker=None if args.no_instagram else HandleLinker(cache, cfg.ig_username, log=log, web=web))
 
 
 def main(argv=None):
@@ -84,65 +111,41 @@ def main(argv=None):
             pass
     args = parse_args(argv)
     cfg = load_config()
+    cache = Cache(Path(args.cache) if args.cache else cfg.cache_path)
     if args.pin:
-        pin_artists(Cache(Path(args.cache) if args.cache else cfg.cache_path), args.pin)
+        pin_artists(cache, args.pin)
         if not args.inputs and not args.events_file:
             return
     if not args.inputs and not args.events_file:
-        raise SystemExit("Give me at least one Instagram link, screenshot, or folder (or --events-file).")
-    if args.free or cfg.provider == "gemini":
-        if not cfg.gemini_key:
-            raise SystemExit("Free mode needs GEMINI_API_KEY in .env (free key: https://aistudio.google.com/apikey).")
-        from .gemini import GeminiLLM
+        raise SystemExit("Give me an Instagram link, screenshot or folder (or --events-file).")
+    llm = make_llm(cfg, args.claude)
+    print(f"Using {'Claude (paid)' if args.claude else 'Gemini free tier'}; local cities: {cfg.home_region}")
 
-        llm = GeminiLLM(cfg.gemini_key, cfg.gemini_model)
-        print(f"Using Gemini free tier ({cfg.gemini_model}); no paid API calls.")
-    else:
-        if not cfg.anthropic_key:
-            raise SystemExit("Missing ANTHROPIC_API_KEY in .env (see README), or use --free with GEMINI_API_KEY.")
-        llm = LLM(cfg.anthropic_key, cfg.model, cfg.fast_model)
-
-    # Step 1: posters -> events
+    # 1. posters -> events
     if args.events_file:
-        raw = json.loads(Path(args.events_file).read_text(encoding="utf-8"))
-        events = [Event.from_dict(d) for d in (raw if isinstance(raw, list) else raw.get("events", []))]
+        events = load_events(args.events_file)
     else:
         events = []
         posts = collect_inputs(args.inputs, cfg.ig_username)
         if not posts:
-            raise SystemExit("Nothing readable to work with. Screenshots always work - pass image files or a folder.")
+            raise SystemExit("Nothing readable. Screenshots always work - pass image files or a folder.")
         for post in posts:
             print(f"Reading {post.label} ({len(post.images)} image(s))...")
             events += extract_events(llm, post)
     events = merge_events(events)
     if args.save_events and not args.events_file:
-        # Accumulate: keep earlier saved events so "resume" / --refresh can still reach older playlists.
-        path = Path(args.save_events)
-        old = []
-        if path.exists():
-            raw = json.loads(path.read_text(encoding="utf-8"))
-            old = [Event.from_dict(d) for d in (raw if isinstance(raw, list) else raw.get("events", []))]
-        saved = merge_events(old + events)
-        path.write_text(json.dumps([e.__dict__ for e in saved], indent=2), encoding="utf-8")
+        save_events(args.save_events, events)
     if not events:
         raise SystemExit("No events found in those images.")
     print(f"Found {len(events)} event(s): " + "; ".join(f"{e.name} ({len(e.artists)} artists)" for e in events))
     if args.events_only:
-        print(f"Saved events to {args.save_events or '(nowhere: add --save-events FILE)'}; stopping (--events-only).")
         return
 
-    # Steps 2-5
-    cache = Cache(Path(args.cache) if args.cache else cfg.cache_path)
-    lastfm = LastFm(cfg.lastfm_key)
-    if not lastfm.available:
-        print("Note: LASTFM_API_KEY not set - using Deezer + Spotify only.")
+    # 2. artists -> songs -> playlists
     sp = Spotify(cfg, write=not args.dry_run)
-    resolver = Resolver(cfg, cache, Deezer(), lastfm, sp, Locator(cfg, cache, llm, use_web=not args.no_web,
-                                                max_web=args.max_searches, deep=args.deep),
-                        Judge(llm, cfg), n_tracks=args.tracks, ask=args.ask,
-                        linker=None if args.no_instagram else HandleLinker(cache, cfg.ig_username))
-
-    # Step 6
+    resolver = build_resolver(cfg, cache, llm, sp, args)
+    if not cfg.tavily_key and not args.no_search:
+        print("Tip: add a free TAVILY_API_KEY to .env to find more tiny bands.")
     for ev in events:
         print(f"\nResolving {len(ev.artists)} artists for {ev.name}...")
         results = []
@@ -153,14 +156,13 @@ def main(argv=None):
         if not args.dry_run:
             pkey, done = find_playlist(cache, ev)
             uris = list(dict.fromkeys(s.uri for r in results for s in r.songs))
-            if done and args.refresh and uris:
+            desc = playlist_description(ev, results)
+            if done and uris:  # same event again: update its playlist instead of making a duplicate
                 sp.replace_items(done["id"], uris)
-                sp.update_description(done["id"], playlist_description(ev, results))
-                link = f"{done['url']} (refreshed)"
-            elif done:  # already built on an earlier run: never create duplicates
-                link = f"{done['url']} (already created earlier; not duplicated)"
+                sp.update_description(done["id"], desc)
+                link = f"{done['url']} (updated)"
             elif uris:
-                pl = sp.create_playlist(playlist_name(ev), playlist_description(ev, results))
+                pl = sp.create_playlist(playlist_name(ev), desc)
                 sp.add_items(pl["id"], uris)
                 if ev.cover_image:
                     sp.set_cover(pl["id"], ev.cover_image)
@@ -168,7 +170,8 @@ def main(argv=None):
                 cache.set("playlists", pkey, {"id": pl["id"], "url": link})
             else:
                 link = "(no songs found; playlist not created)"
-        print_report(ev, results, link, args.dry_run)
+        print_report(ev, results, link)
+        print(f"Description: {playlist_description(ev, results)}")
     print("\n" + llm.usage_line())
 
 

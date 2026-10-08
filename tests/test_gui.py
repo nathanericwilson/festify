@@ -1,18 +1,15 @@
 from festify.gui import build_args
 
 
-def test_new_run_args():
-    args = build_args({"links": ["https://www.instagram.com/p/X/", " "], "free": True, "dry_run": True,
-                       "tracks": "4"}, ["C:/tmp/upload"])
+def test_new_post_args():
+    args = build_args({"links": ["https://www.instagram.com/p/X/", " "], "dry_run": True, "tracks": "4"}, ["C:/tmp/upload"])
     assert args == ["https://www.instagram.com/p/X/", "C:/tmp/upload", "--save-events", "events.json",
-                    "--free", "--dry-run", "--tracks", "4"]
+                    "--dry-run", "--tracks", "4"]
 
 
-def test_resume_with_pin_and_refresh():
-    args = build_args({"resume": True, "links": ["ignored"], "pins": ["Skrude=https://open.spotify.com/artist/ID", ""],
-                       "free": True, "refresh": True}, [])
-    assert args == ["--pin", "Skrude=https://open.spotify.com/artist/ID", "--events-file", "events.json",
-                    "--free", "--refresh"]
+def test_update_all_with_pin():
+    args = build_args({"resume": True, "links": ["ignored"], "pins": ["Skrude=https://open.spotify.com/artist/ID", ""]}, [])
+    assert args == ["--pin", "Skrude=https://open.spotify.com/artist/ID", "--events-file", "events.json"]
 
 
 def test_find_playlist_tolerates_renamed_event(tmp_path):

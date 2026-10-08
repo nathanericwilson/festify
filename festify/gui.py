@@ -124,6 +124,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             return self._send(200, PAGE.replace("__CITIES__", "; ".join(load_config().local_cities)), "text/html")
+        if self.path == "/favicon.png":
+            data = (ROOT / "assets" / "festify.png").read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            return self.wfile.write(data)
         m = re.match(r"/log\?from=(\d+)", self.path)
         if m:
             i = int(m.group(1))
@@ -152,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
 
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Festify</title>
+<title>Festify</title><link rel="icon" href="/favicon.png">
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--ink:#16181d;--muted:#5f6673;--line:#e3e6ea;--accent:#1db954;--accent-ink:#06210f;--log:#0f1115;--logink:#d7dde6;--warn:#b45309}
 @media (prefers-color-scheme:dark){:root{--bg:#0e1013;--card:#171a1f;--ink:#e8ebf0;--muted:#9aa3af;--line:#2a2f37;--log:#0a0b0d;--logink:#cfd6e0;--warn:#f59e0b}}

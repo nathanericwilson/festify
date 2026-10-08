@@ -13,3 +13,4 @@ realrun*.log
 freetest*.log
 *.log
 logs/
+scheduled_refresh.bat

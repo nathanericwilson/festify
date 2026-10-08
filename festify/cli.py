@@ -39,7 +39,7 @@ def parse_args(argv=None):
     p.add_argument("--no-instagram", action="store_true", help="skip bands' Instagram bio / Linktree lookups")
     p.add_argument("--no-search", action="store_true", help="skip Tavily web search")
     p.add_argument("--no-geocode", action="store_true", help="skip OpenStreetMap distance lookups")
-    p.add_argument("--max-searches", type=int, default=30, help="web searches per run (default 30)")
+    p.add_argument("--max-searches", type=int, default=80, help="web searches per run (default 80; 1,000 free per month)")
     p.add_argument("--cache", help="cache file (default .festify_cache.json)")
     return p.parse_args(argv)
 

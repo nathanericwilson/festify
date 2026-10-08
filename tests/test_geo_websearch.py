@@ -76,7 +76,8 @@ def test_cap_and_cache(tmp_path):
     w = ws(tmp_path, [Resp(200, {"results": []})], max_searches=1)
     w.search("a"); w.search("a")  # second is cached
     assert w.used == 1
-    assert w.search("b") == [] and not w.on  # cap reached
+    assert w.search("b") == [] and w.on  # cap reached: no more searches, but profile reading stays on
+    assert w.search("c") == [] and len(w.s.calls if hasattr(w.s, "calls") else []) <= 1
 
 
 def test_no_key_does_nothing(tmp_path):

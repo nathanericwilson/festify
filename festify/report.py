@@ -85,6 +85,8 @@ def print_report(ev: Event, results: list[ArtistResult], playlist: str, out=prin
     missing = [r for r in results if not r.has_songs]
 
     def section(title, rows, fmt):
+        if not rows:
+            return
         out(f"\n{title} ({len(rows)})")
         for r in rows:
             fmt(r)
@@ -124,7 +126,5 @@ def print_report(ev: Event, results: list[ArtistResult], playlist: str, out=prin
     section("Matched, but maybe another band with the same name", unsure, f_unsure)
     section("Several same-name artists included", multi, f_multi)
     section("No songs added", missing, f_missing)
-    out(f"\nUnreadable logos ({len(ev.unreadable)})")
-    for u in ev.unreadable:
-        out(f"  ~ {u}")
+    section("Unreadable logos", ev.unreadable, lambda u: out(f"  ~ {u}"))
     out(f"\nPlaylist: {playlist}")

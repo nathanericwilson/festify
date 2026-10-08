@@ -1,213 +1,138 @@
 # festify
 
-Turn Instagram concert/festival posts (or screenshots of them) into one private Spotify playlist per event. Built for small local shows, where many bands share names with unrelated artists elsewhere.
+**Paste an Instagram concert post, get a Spotify playlist of the bands playing.**
 
-**How it works**
+festify reads a show poster (or screenshots of one), works out which artists are on it, finds each one's top songs and builds one private Spotify playlist per event, with the post image as the cover. It's built for small local shows, where the hard part isn't Spotify but *identity*. A band called "Helper" or "World Record" from your town shares its name with several unrelated artists around the world, and most tiny bands have no Wikipedia page, no MusicBrainz entry and no location data anywhere in Spotify's API.
 
-1. **Read the poster.** Claude (vision) extracts the event, date, venue, city and lineup from the images and caption. Tagged `@handles` are used to recover bands whose logos are illegible.
-2. **Identify each band.** Deezer (fan counts) and Last.fm (listeners) find candidates. When several share a name, location evidence (MusicBrainz + web search, e.g. Bandcamp) and Claude pick the most plausible local one. With `--ask` you choose yourself.
-3. **Pick songs.** Top songs come from Deezer/Last.fm and are matched on Spotify by ISRC. Spotify is only the destination.
-4. **Build playlists.** One private playlist per event, named `<Event> – <Date>`, with the post image as the cover.
-5. **Report.** Per event: matched, picked-from-several (with evidence), possibly non-local, not on Spotify, illegible logos, and the playlist link.
+It never stops to ask questions. Anything it isn't sure about is written into the **playlist description** on Spotify, e.g. `Maybe another band with the same name: Helper. Not on Spotify: Gene Freak.`
 
-> Spotify's Feb 2026 Development Mode changes are respected: no top-tracks/popularity/followers, search limit 10, `POST /me/playlists`, `POST /playlists/{id}/items`. Only the official Web API is used.
+> This is a personal project built with an AI coding assistant (Claude Code). The design notes below explain the problems it solves and the trade-offs it makes.
 
-## Requirements
+## How it works
 
-- Python 3.10+
-- A **Spotify Premium** account (required to own a Development Mode app)
-- An **Anthropic API key** (paid, usage-based; see [Cost](#cost))
-- A free **Last.fm API key** (optional but recommended)
+```
+Instagram link / screenshots
+  │  instaloader (post images, caption, tagged @accounts, posting account)
+  ▼
+Read the poster            Gemini (free) vision: event, date, city, lineup; tags fill in illegible logos
+  ▼
+For each band:
+  1. The band's own link   its Instagram bio (read via Tavily), Linktree / bio links, album or track links
+  2. Candidates            Deezer + Spotify + Last.fm artists with exactly that name
+  3. Where are they from   MusicBrainz areas + web-search snippets (Tavily), attributed by the LLM,
+                           geocoded with OpenStreetMap and measured against YOUR cities
+  4. Decide (rules first)  only one local candidate → it; confident nearby pick → it;
+                           several plausible nearby → up to 3, songs split 3/2/1; far away → left out
+  ▼
+Top songs                  Deezer / Last.fm top tracks matched on Spotify by ISRC
+  ▼
+Spotify playlist           private, post image as cover, warnings in the description
+```
 
 ## Setup
 
-### 1. Get the code
+You need Python 3.10+ and a **Spotify Premium** account (Spotify requires it to own a developer app). Everything else is free.
+
+### 1. Install
 
 ```bash
 git clone <this-repo-url> festify
 cd festify
-```
-
-### 2. Install
-
-macOS / Linux:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Windows (PowerShell):
-```powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+copy .env.example .env          # macOS/Linux: cp .env.example .env
 ```
 
-### 3. Create your Spotify app
+### 2. Keys (put them in `.env`)
 
-1. Open <https://developer.spotify.com/dashboard> and log in (Premium account).
-2. **Create app**. Any name and description.
-3. **Redirect URI:** `http://127.0.0.1:8888/callback` exactly (not `localhost`). Click **Add**.
-4. Tick **Web API**, accept the terms, **Save**.
-5. Open the app's **Settings** and copy the **Client ID** and **Client secret**.
+| Key | Where | Needed? |
+|---|---|---|
+| `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | <https://developer.spotify.com/dashboard>, then **Create app**, set the Redirect URI to exactly `http://127.0.0.1:8888/callback`, tick **Web API**, and copy both values from **Settings** | required |
+| `GEMINI_API_KEY` | <https://aistudio.google.com/apikey> (free tier, no billing) | required |
+| `TAVILY_API_KEY` | <https://tavily.com> (1,000 free credits/month, no card) | strongly recommended: reads bands' Instagram bios and finds their pages |
+| `LOCAL_CITIES` | your own list, e.g. `Provo, UT; Salt Lake City, UT` | strongly recommended: "local" means near these (plus the poster's city) |
+| `LASTFM_API_KEY` | <https://www.last.fm/api/account/create> | recommended |
+| `MUSICBRAINZ_CONTACT` | your email or a URL | recommended (MusicBrainz and OpenStreetMap ask for contact info) |
+| `IG_USERNAME` | a spare Instagram account, see below | optional |
+| `ANTHROPIC_API_KEY` | paid alternative to Gemini (`--claude`) | optional |
 
-Development Mode apps allow 5 authorized users; the owner needs Premium.
+`.env` is gitignored. Never commit it.
 
-### 4. Get the other keys
+### 3. Run the app
 
-- **Anthropic:** <https://console.anthropic.com> → API Keys → Create Key. Add credit under Billing.
-- **Last.fm (free):** <https://www.last.fm/api/account/create> (log in first). Only the API key is needed.
+Double-click **`Festify.bat`** (Windows) or run `python -m festify.gui`. A page opens at `http://127.0.0.1:8765` (reachable only from your computer):
 
-### 5. Configure
+1. Paste an Instagram post link (or drop screenshots).
+2. Click **Build playlist**.
 
-```bash
-cp .env.example .env        # Windows: copy .env.example .env
-```
+The first run opens a browser tab to authorize Spotify. The result card shows the playlist link and any warnings. **More options** has your local cities, preview-only mode, songs per band, "Fix a band" pins and **Update all saved playlists**. Every run's log is saved in `logs/`, and **Copy log** copies it for troubleshooting.
 
-Edit `.env` and fill in `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `ANTHROPIC_API_KEY` and `LASTFM_API_KEY`. Never commit `.env` (it is gitignored).
+Running the same post again updates its playlist instead of making a duplicate.
 
-| Variable | Purpose |
-|---|---|
-| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | Your Spotify app |
-| `ANTHROPIC_API_KEY` | Poster reading, picking, web search |
-| `LASTFM_API_KEY` | Secondary listener/top-track source |
-| `FESTIFY_MODEL` | Claude model (default `claude-sonnet-5-5`) |
-| `HOME_REGION` | "Local" when a poster has no city (default `Utah, Salt Lake City, Provo`; set your own) |
-| `IG_USERNAME` | Optional, see Instagram below |
-| `MUSICBRAINZ_CONTACT` | Your email or URL for the MusicBrainz User-Agent |
-
-### 6. Try it
-
-Dry run first (no Spotify login, creates nothing):
+### Command line
 
 ```bash
-python -m festify path/to/poster.png --dry-run
-```
-
-The first real run opens a browser to authorize Spotify; the token is cached locally in `.spotify_token_cache`.
-
-## The app (no terminal needed)
-
-Double-click **`Festify.bat`** (Windows), or run `python -m festify.gui`. A page opens in your browser at `http://127.0.0.1:8765` (only reachable from your own computer):
-
-- paste Instagram links and/or drop screenshots (all dropped images count as one post),
-- tick options (free mode, dry run, refresh, no web search, resume last run, songs per artist),
-- pin wrong bands under "Fix a wrong band",
-- watch the live log; playlist links appear as clickable cards when done.
-
-Every run is saved to `logs/festify_<date>_<time>.log`, and **Copy log** puts the whole log on your clipboard for troubleshooting. Picking between same-name bands interactively (`--ask`) still needs the terminal.
-
-Extracted events are added to `events.json`, so **Resume last run** (or `--events-file events.json`) can refresh any earlier playlist without re-reading posters. Existing playlists are matched even if a poster is read with a slightly different event name, so they aren't duplicated.
-
-## Usage
-
-```bash
-python -m festify poster.png --dry-run
-python -m festify https://www.instagram.com/p/XXXX/ screenshots_folder/ --tracks 4
-python -m festify poster.png --ask          # choose same-name artists yourself
+python -m festify https://www.instagram.com/p/XXXX/          # build / update the playlist
+python -m festify poster.png screenshots_folder/ --dry-run    # preview, create nothing
+python -m festify --events-file events.json                   # refresh every saved event
+python -m festify --pin "Skrude=https://open.spotify.com/artist/<id>" --events-file events.json
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--dry-run` | Show everything, create nothing |
-| `--ask` | Pick among same-name artists yourself. Shows genres, releases, songs, location evidence, Claude's suggestion and an `open.spotify.com` link so you can check the About tab's "Where people listen". Your picks are cached. |
-| `--tracks N` | Songs per artist (default 3) |
-| `--no-web` | Never use web search (cheapest, less evidence) |
-| `--deep` | Also web-search single-match artists (costly) |
-| `--free` | Use the Gemini free tier instead of Claude |
-| `--cache FILE` | Use a different cache file (e.g. for testing) |
-| `--pin "Name=<spotify link>"` | Lock an artist to an exact Spotify artist (fixes wrong same-name picks) |
-| `--refresh` | Re-fill playlists already created, after fixing picks |
-| `--max-searches N` | Cap web-search lookups per run (default 25) |
-| `--events-file F` / `--save-events F` | Reuse / add to the extracted events JSON |
-| `--events-only` | Just read posters and save events (no Spotify) |
+| `--dry-run` | show everything, create nothing |
+| `--tracks N` | songs per band (default 3) |
+| `--pin "Name=<spotify artist link>"` | lock a band to an exact Spotify artist |
+| `--events-file F` / `--save-events F` / `--events-only` | reuse, save, or only read events (skips re-reading posters) |
+| `--no-instagram` / `--no-search` / `--no-geocode` | turn off bio lookups / Tavily / OpenStreetMap |
+| `--max-searches N` | Tavily searches per run (default 80; results are cached) |
+| `--claude` | use the paid Claude API instead of free Gemini |
 
-**Inputs:** Instagram post/reel URLs, image files, or folders. Each URL and each folder is one post; loose image files are treated as one post. Duplicate events across posts are merged. A multi-venue festival spread over several slides becomes one event.
+## Design notes
 
-### Instagram
+**Identity before songs.** Name matching is the main failure mode. In order of trust:
+1. Your pin.
+2. A Spotify link from the band's own Instagram bio, Linktree, or a page that names their handle. Album and track links count too: the artist credited on that release is used.
+3. Distance rules plus an LLM tie-breaker.
 
-Link fetching uses [instaloader](https://instaloader.github.io/) and often works anonymously for public posts, but Instagram can block or rate-limit it at any time. If it does, festify says so; **screenshots always work**. For better odds, run `instaloader -l <your_username>` once to save a login session and set `IG_USERNAME` (a throwaway account is safer than your main one).
+Songs are matched across services by **ISRC**, so the songs really belong to the chosen artist rather than a same-name one.
 
-### Finding bands through their Instagram
+**Distance, not vibes.** Each candidate's evidence (MusicBrainz areas, Bandcamp and Instagram snippets) is turned into places, geocoded and measured against `LOCAL_CITIES`: local ≤ 80 km, regional ≤ 400 km. A far-away artist is never added as an extra guess.
 
-When the poster tags a band's account, festify looks for that band's own Spotify link: first in the Instagram bio and bio links (following a Linktree or website), then in a Linktree with the same name as the handle that links back to the account. A link found this way wins over name-based guessing (your own `--pin` still wins over everything), as long as the Spotify artist's name matches the poster.
+**Never ask.** The playlist is for discovering bands before a show, so a flagged guess is better than a missing band. Uncertainty becomes text in the description, and when several same-name artists are all plausible and nearby, up to 3 are included with fewer songs each.
 
-Instagram blocks anonymous profile lookups quickly, so for this to work reliably, log in once (ideally with a spare account, since Instagram sometimes flags automated use):
+**Instagram.** Instagram rate-limits profile lookups heavily, even with a logged-in session. festify reads public profiles through Tavily's page reader, and finds untagged bands' handles in web-search results. It does not use proxies or anti-bot tricks. Some accounts' link sections aren't visible to the reader; those bands fall back to the distance rules.
 
-```bash
-instaloader -l YOUR_INSTAGRAM_USERNAME
-```
+**What isn't possible.** No public API (Spotify, Deezer or Last.fm) says *where an artist's listeners are*. Spotify only shows that to the artist. Distance from your cities is the substitute.
 
-and set `IG_USERNAME=YOUR_INSTAGRAM_USERNAME` in `.env`.
+**Spotify's Feb 2026 Development Mode limits** are respected: top tracks, popularity, followers and batch lookups were removed, search returns at most 10 results, and playlists use `POST /me/playlists` and `/playlists/{id}/items`. Dev-mode apps can be rate-limit-banned for many hours, so calls are spaced, capped, cached and never retried in a loop.
 
-If that login fails (Instagram often refuses it for new accounts with a bare "fail"), log in to instagram.com in **Firefox** instead, close Firefox, and import that login (no password typed in the terminal):
+**Free and polite.** Every external answer (candidates, MusicBrainz, searches, page reads, geocodes, LLM verdicts, songs) is cached in `.festify_cache.json`, so re-runs cost almost nothing. MusicBrainz and Nominatim are throttled to ≤ 1 request/second with an identifying User-Agent, per their usage policies.
 
-```bash
-instaloader --load-cookies firefox
-```
+## Measuring accuracy
 
-Even when logged in, Instagram may rate-limit profile lookups for a while after many requests; festify then skips them for that run and you can re-run later. Results are cached per handle, so each account is looked up once. Use `--no-instagram` to turn this off.
-
-### Cache
-
-Picks and location findings are stored in `.festify_cache.json`, so each artist is resolved once. Delete an entry (or the file) to re-resolve. `--ask` overrides cached Claude picks and saves yours.
-
-## Free mode (no paid API)
-
-Everything except Claude is already free (Deezer, Last.fm, MusicBrainz, Spotify). To replace Claude too, use Google's **Gemini free tier**:
-
-1. Get a free key at <https://aistudio.google.com/apikey> (no billing needed).
-2. Put it in `.env` as `GEMINI_API_KEY=...`.
-3. Run with `--free` (or set `LLM_PROVIDER=gemini`):
+`tests/golden.json` lists known-correct answers for real poster bands. To re-decide them all from cached evidence, ignoring your pins, run:
 
 ```bash
-python -m festify poster.png --free --dry-run
+python -m festify.eval
 ```
 
-Gemini then reads posters, judges same-name artists and does Google-Search-grounded location lookups. Free tiers have rate and daily limits that Google can change; festify retries, and if a quota is hit it stops cleanly and keeps finished work cached, so just re-run later. If the main model is overloaded or unavailable, festify automatically falls back to `gemini-3.7-flash`, then `gemini-3.1-flash-lite`. Free-tier prompts may be used by Google to improve its products, so don't send anything private (public posters are fine). Poster-reading accuracy on stylized lettering may differ from Claude's.
-
-## Cost
-
-Poster reading uses `FESTIFY_MODEL` (Sonnet-class) and costs cents per post. Everything else is built to be cheap:
-
-- Same-name judging and web search use the small `FESTIFY_FAST_MODEL` (default `claude-haiku-4-5-20251001`).
-- **Web search is the expensive step**, so it only runs for artists with several same-name candidates (use `--deep` to also search single matches), at most 2 searches each, and at most `--max-searches` (default 25) per run.
-- Results are cached, so each artist is paid for once.
-- Every run ends with a usage line (calls, searches, tokens). Check your Anthropic Usage page after the first run; an early version without these limits cost about $7 on one 5-post, 70-artist run.
-
-Cheapest options: `--no-web` (no search at all) and `--ask` (you make the hard calls). Start with one poster before running many.
-
-## Fixing wrong matches
-
-Many small bands share names with unrelated artists. festify handles this in three ways:
-
-- A name with **one exact match** is accepted. If the evidence suggests it's a different, non-local band, the report flags it ("possibly NOT local") but its songs stay in the playlist.
-- A name with **several same-name artists** only gets songs verifiably by the chosen artist: ISRC matches, or that artist's own Spotify page when it can be tied to them (an ISRC credit, a MusicBrainz link, or a confident pick with only one Spotify artist of that name). If the picker isn't highly confident, no songs are added and the report lists the candidates under **NEEDS YOUR PICK**.
-- You can always override: `--ask` lets you choose interactively, and `--pin "Name=https://open.spotify.com/artist/<id>"` locks an artist to an exact Spotify artist. Then re-run with `--refresh` to update playlists that were already created. Playlists are never duplicated: finished events are remembered in the cache.
-
-## Troubleshooting and limits
-
-- **Spotify rate limit.** Development Mode apps have strict request limits. If you hit them, Spotify can ban the app for many hours (we saw about 23). festify spaces its Spotify calls, caps lookups per artist, and stops with a clear message instead of waiting; finished work is cached, so re-run later. Matched songs are cached to keep repeat runs small, and a dry run uses Spotify calls too, so don't run many back to back.
-- **Gemini free quota.** Free limits (requests per minute/day, per model) are listed in your AI Studio rate-limit page and can change. festify spaces calls, retries, falls back to other free models, then stops cleanly when a quota is used up. Re-run later. Google Search grounding has its own, much smaller free quota; when it runs out festify keeps going without web search (MusicBrainz evidence only) instead of stopping.
-- **Claude billing errors** (no credit or a bad key) also stop the run immediately and are never cached as results.
-- **Instagram blocks.** Use screenshots instead; they always work.
-- **Resume without re-reading posters:** `python -m festify --events-file events.json` (save it first with `--save-events events.json`).
-
-## Tests
+It prints right and wrong answers, so rule or prompt changes can be checked before they reach a playlist. Unit tests use mocked APIs and need no keys:
 
 ```bash
 python -m pytest
 ```
 
-Tests use mocked API responses and need no keys.
+## Troubleshooting
 
-## Privacy and safety
+- **Spotify rate limit / ban:** festify stops cleanly and keeps finished work cached. Re-run later.
+- **Gemini quota:** it falls back to other free models, then stops cleanly. Re-run later.
+- **Instagram won't load the post:** use screenshots instead; they always work. Optionally save a login with a spare account: `instaloader -l <username>` (or log in on instagram.com in Firefox, close it, and run `instaloader --load-cookies firefox`), then set `IG_USERNAME`.
+- **A band is wrong:** use **Fix a band** in the app (or `--pin`), then **Update all saved playlists**.
 
-- Keys live only in your local `.env`. The cache and token files are gitignored.
-- Playlists are created as **private**.
-- Be considerate with Instagram, MusicBrainz (the client throttles to under 1 request/second), Deezer and Last.fm, and follow their terms of use.
+## Credits and license
 
-## License
+Geocoding © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, via Nominatim. Artist data from [MusicBrainz](https://musicbrainz.org), [Deezer](https://developers.deezer.com), [Last.fm](https://www.last.fm/api) and [Spotify](https://developer.spotify.com). Web search by [Tavily](https://tavily.com).
 
 MIT, see [LICENSE](LICENSE).

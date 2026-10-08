@@ -32,9 +32,10 @@ class WebSearch:
             return hit
         if not self.on:
             return []
-        if self.used >= self.max:
-            self.on = False
-            self.log(f"  ! web-search cap reached ({self.max} this run); the rest use other evidence only.")
+        if self.used >= self.max:  # searches stop; reading bands' profile pages (extract) carries on
+            if self.used == self.max:
+                self.used += 1
+                self.log(f"  ! web-search cap reached ({self.max} this run); the rest use other evidence only.")
             return []
         self.used += 1
         body = {"query": query, "search_depth": "basic", "max_results": n, "include_raw_content": "text" if raw else False}
@@ -59,7 +60,7 @@ class WebSearch:
         hit = self.cache.get("extract", url)
         if hit:
             return hit
-        for _ in range(2):  # pages sometimes come back empty on the first try
+        for _ in range(3):  # pages sometimes come back empty on the first tries
             if not self.on:
                 return None
             try:

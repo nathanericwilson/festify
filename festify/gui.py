@@ -142,6 +142,11 @@ class Handler(BaseHTTPRequestHandler):
             if JOB.running:
                 JOB.proc.terminate()
             return self._send(200, {"ok": True})
+        if self.path == "/quit":  # a newer Festify window asks this (older) one to make way
+            if JOB.running:
+                return self._send(409, {"error": "a run is in progress"})
+            self._send(200, {"ok": True})
+            return threading.Thread(target=self.server.shutdown, daemon=True).start()
         self._send(404, {"error": "not found"})
 
 
@@ -235,8 +240,34 @@ $("copy").onclick=async()=>{const t=$("log").innerText;try{await navigator.clipb
 </script></body></html>"""
 
 
+class Server(ThreadingHTTPServer):
+    allow_reuse_address = False  # on Windows, reuse would let a stale copy of the app keep answering on the port
+
+
+def _bind() -> Server:
+    """Start the server; if an older Festify window holds the port, ask it to close first."""
+    import time
+    import urllib.request
+
+    for attempt in range(2):
+        try:
+            return Server((HOST, PORT), Handler)
+        except OSError:
+            if attempt:
+                break
+            try:
+                req = urllib.request.Request(f"http://{HOST}:{PORT}/quit", data=b"{}", method="POST",
+                                             headers={"Origin": f"http://{HOST}:{PORT}"})
+                urllib.request.urlopen(req, timeout=5)
+                time.sleep(1.5)
+            except Exception:
+                break
+    sys.exit(f"Another Festify window (maybe an older version, or one with a run in progress) is using port {PORT}. "
+             f"Close that window and start Festify again.")
+
+
 def main():
-    srv = ThreadingHTTPServer((HOST, PORT), Handler)
+    srv = _bind()
     url = f"http://{HOST}:{PORT}/"
     print(f"Festify is running at {url}  (close this window to quit)")
     if "--no-browser" not in sys.argv:

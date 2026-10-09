@@ -7,5 +7,9 @@
   {"name": "The Rat Utopia Experiment", "expect": ["3JyFf0L4m9YDuka462BWKa", "deezer:"], "note": "Tacoma, on tour: right band, far is OK"},
   {"name": "Sleep Cult", "expect": ["70kwxIbsph7V1pyY2ZVRlj"], "note": "from their own Linktree"},
   {"name": "helper", "expect": [], "ok_if_flagged": true, "note": "probably not on Spotify; a flagged same-name guess is fine (playlists are for discovering bands)"},
-  {"name": "gene freak", "expect": [], "note": "no Spotify link on their Instagram"}
+  {"name": "gene freak", "expect": [], "note": "no Spotify link on their Instagram"},
+  {"name": "GNARWHALJRZ", "expect": ["5MgQQGvxsVKTvgg4TyBZ7a"], "note": "user-confirmed (Mojave Mo Problemz, Oct 14)"},
+  {"name": "Misdemeanor", "expect": ["2eDwE3w4BEdI7oNLTjURym"], "note": "user-confirmed"},
+  {"name": "CornerCut", "expect": ["7c6yxnJ2vZQNZelyeNsesf", "deezer:288344701"], "note": "user-confirmed; was flagged unsure"},
+  {"name": "Maggie's House", "expect": ["3BQV8VDfWZYyTEHkGG7UQC", "deezer:305396191"], "note": "user-confirmed; was flagged unsure"}
 ]

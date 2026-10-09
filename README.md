@@ -8,7 +8,7 @@ festify reads a show poster (or screenshots of one), works out which artists are
 
 It never stops to ask questions. Anything it isn't sure about is written into the **playlist description** on Spotify, e.g. `Maybe another band with the same name: Helper. Not on Spotify: Gene Freak.`
 
-> This is a personal project built with an AI coding assistant (Claude Code). The design notes below explain the problems it solves and the trade-offs it makes.
+> This is a personal project built with an AI coding assistant (Claude Code). The **[case study](CASE_STUDY.md)** covers the problem, my decisions and how I tested it; the design notes below cover the trade-offs.
 
 ## How it works
 

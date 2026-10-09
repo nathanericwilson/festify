@@ -1,3 +1,5 @@
+<img src="assets/festify.png" alt="festify icon: a circle pit and a band on stage" width="160" align="right">
+
 # festify
 
 **Paste an Instagram concert post, get a Spotify playlist of the bands playing.**

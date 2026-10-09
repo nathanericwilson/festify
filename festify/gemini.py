@@ -13,7 +13,7 @@ import requests
 from .llm import BillingError, extract_json
 
 BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-FALLBACKS = ["gemini-3.7-flash", "gemini-3.1-flash-lite"]  # tried in order if the main model is overloaded
+FALLBACKS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]  # tried in order if the main model is overloaded (3.7 just reroutes to 3.8)
 
 
 def _parts(content) -> list[dict]:

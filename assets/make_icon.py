@@ -57,6 +57,9 @@ BAND = {"singer": (255, 255, 255), "guitar": (255, 170, 40), "bass": (80, 200, 2
 
 
 # ---------------------------------------------------------------- people
+STYLE = "silhouette"  # or "color": solid colored figures
+
+
 def person(base, yaw, color, lean=10, tilt=0, hip=0.95, arms=((20, 60), (-20, 70)), legs=((25, -40), (-20, -35)), scale=1.0):
     """Joints for a person standing at base (x, y, z), facing yaw degrees (0 = +x, 90 = +z).
     Limb angles are in the person's side plane: 0 = straight down, 90 = forward, 180 = up.
@@ -69,53 +72,98 @@ def person(base, yaw, color, lean=10, tilt=0, hip=0.95, arms=((20, 60), (-20, 70
         return add(o, add(mul(f, length * math.sin(r) * scale), mul(u, -length * math.cos(r) * scale)))
 
     H = add(base, (0, hip * scale, 0))
+    chest = go(H, 180 - lean, 0.36)
     neck = go(H, 180 - lean, 0.55)
-    head = go(neck, 180 - lean - tilt, 0.24)
+    head = go(neck, 180 - lean - tilt, 0.25)
     limbs = []
     for side, (a1, b1) in zip((1, -1), arms):
-        sh = add(neck, mul(s, 0.17 * side * scale))
+        sh = add(go(H, 180 - lean, 0.5), mul(s, 0.19 * side * scale))
         el = go(sh, a1, 0.30)
-        limbs.append(("arm", side, [sh, el, go(el, a1 + b1, 0.28)]))
+        hand = go(el, a1 + b1, 0.27)
+        limbs.append((side, [[sh, el, hand], [0.085, 0.07, 0.058]], [hand, 0.068]))
     for side, (a1, b1) in zip((1, -1), legs):
-        hp = add(H, mul(s, 0.1 * side * scale))
+        hp = add(H, mul(s, 0.11 * side * scale))
         kn = go(hp, a1, 0.46)
-        limbs.append(("leg", side, [hp, kn, go(kn, a1 + b1, 0.46)]))
-    return {"head": head, "torso": [H, neck], "limbs": limbs, "base": base, "side": s, "f": f,
-            "color": color, "scale": scale}
+        ank = go(kn, a1 + b1, 0.44)
+        toe = add(ank, add(mul(f, 0.17 * scale), (0, -0.02 * scale, 0)))
+        limbs.append((side, [[hp, kn, ank], [0.11, 0.085, 0.068]], [[ank, toe], [0.07, 0.06]]))
+    shoulders = [add(go(H, 180 - lean, 0.5), mul(s, 0.19 * scale)), add(go(H, 180 - lean, 0.5), mul(s, -0.19 * scale))]
+    hips = [add(H, mul(s, 0.11 * scale)), add(H, mul(s, -0.11 * scale))]
+    return {"head": head, "trunk": [H, chest, neck], "shoulders": shoulders, "hips": hips, "limbs": limbs,
+            "base": base, "side": s, "f": f, "color": color, "scale": scale}
 
 
-def capsule(d, pts3, radius, color, edge=0.022):
+def capsule(d, pts3, radii, color):
+    """A tapered tube through 3D points; radii is one value or one per point (world units)."""
+    if not isinstance(radii, (list, tuple)):
+        radii = [radii] * len(pts3)
     pts = [proj(p) for p in pts3]
-    for rw, col in ((radius + edge, INK), (radius, color)):
-        for (a, za), (b, zb) in zip(pts, pts[1:]):
-            n = 10
-            for i in range(n + 1):
-                t = i / n
-                x, y, z = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, za + (zb - za) * t
-                r = FOCAL * rw / z
-                d.ellipse([x - r, y - r, x + r, y + r], fill=col)
-            d.line([a, b], fill=col, width=int(2 * FOCAL * rw / max(za, zb)))
+    for i in range(len(pts) - 1):
+        (a, za), (b, zb) = pts[i], pts[i + 1]
+        ra, rb = radii[i], radii[i + 1]
+        d.line([a, b], fill=color, width=max(1, int(2 * FOCAL * min(ra, rb) / max(za, zb))))
+        n = 14
+        for k in range(n + 1):
+            t = k / n
+            x, y, z = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, za + (zb - za) * t
+            r = FOCAL * (ra + (rb - ra) * t) / z
+            d.ellipse([x - r, y - r, x + r, y + r], fill=color)
 
 
-def ball(d, p3, radius, color, edge=0.022):
+def ball(d, p3, radius, color):
     (x, y), z = proj(p3)
-    for rw, col in ((radius + edge, INK), (radius, color)):
-        r = FOCAL * rw / z
-        d.ellipse([x - r, y - r, x + r, y + r], fill=col)
+    r = FOCAL * radius / z
+    d.ellipse([x - r, y - r, x + r, y + r], fill=color)
+
+
+def rod(d, pts3, radius, color, edge=0.016):
+    capsule(d, pts3, radius + edge, INK)
+    capsule(d, pts3, radius, color)
+
+
+def knob(d, p3, radius, color, edge=0.016):
+    ball(d, p3, radius + edge, INK)
+    ball(d, p3, radius, color)
 
 
 def draw_person(d, p):
+    """One clean outline around the whole body, then the body: far limbs, trunk, head, near limbs."""
     near = 1 if dot(p["side"], sub(CAM, p["base"])) > 0 else -1  # which side faces the camera
-    col = tuple(p["color"][:3]) + (255,)
     k = p["scale"]
-    for _, side, pts in p["limbs"]:
-        if side != near:
-            capsule(d, pts, 0.078 * k, shade(col, 0.68))
-    capsule(d, p["torso"], 0.135 * k, col)
-    ball(d, p["head"], 0.15 * k, col)
-    for _, side, pts in p["limbs"]:
-        if side == near:
-            capsule(d, pts, 0.078 * k, col)
+    col = tuple(p["color"][:3]) + (255,)
+    if STYLE == "silhouette":
+        edge, outline, body, far_body = 0.034, col, (22, 16, 40, 255), (16, 12, 30, 255)
+    else:
+        edge, outline, body, far_body = 0.024, INK, col, shade(col, 0.7)
+
+    def parts(side_filter):
+        out = []
+        for side, (pts, radii), extra in p["limbs"]:
+            if side_filter(side):
+                out.append(("tube", pts, [r * k for r in radii]))
+                if isinstance(extra[0], list):  # foot
+                    out.append(("tube", extra[0], [r * k for r in extra[1]]))
+                else:  # hand
+                    out.append(("ball", extra[0], extra[1] * k))
+        return out
+
+    far, near_parts = parts(lambda s: s != near), parts(lambda s: s == near)
+    core = [("tube", p["hips"], [0.11 * k] * 2), ("tube", p["trunk"], [0.13 * k, 0.155 * k, 0.11 * k]),
+            ("tube", p["shoulders"], [0.1 * k] * 2), ("ball", p["head"], 0.16 * k)]
+
+    def paint(items, color, grow=0.0):
+        for kind, geo, r in items:
+            if kind == "tube":
+                capsule(d, geo, [x + grow for x in r], color)
+            else:
+                ball(d, geo, r + grow, color)
+
+    paint(far + core + near_parts, outline, edge)
+    paint(far, far_body)
+    paint(core, body)
+    if STYLE != "silhouette":  # a thin line keeps the near limbs readable where they cross the body
+        paint(near_parts, INK, 0.012)
+    paint(near_parts, body)
 
 
 def shadow(img, base, r=0.38):
@@ -172,10 +220,81 @@ def drum(d, center, r, length, axis, color):
     d.polygon([P(q) for q in front], fill=(240, 240, 250, 255), outline=INK, width=6)
 
 
+def drum_shell(d, center, r, length, axis, shell, head=(236, 236, 244, 255), logo=None):
+    """Cylinder: the hull between both end discs, then the end facing the camera (optionally with a logo)."""
+    half = {"x": (length / 2, 0, 0), "y": (0, length / 2, 0), "z": (0, 0, length / 2)}[axis]
+    a, b = disc(sub(center, half), r, axis), disc(add(center, half), r, axis)
+    if axis == "y":
+        front = b  # seen from above: the top head shows
+    else:
+        front = a if depth(a[0]) + depth(a[8]) < depth(b[0]) + depth(b[8]) else b
+    d.polygon(convex_hull([P(q) for q in a + b]), fill=shell, outline=INK, width=6)
+    d.polygon([P(q) for q in front], fill=head, outline=INK, width=6)
+    if logo:
+        fc = mul(add(front[0], front[len(front) // 2]), 0.5)
+        d.polygon([P(add(fc, mul(sub(q, fc), 0.6))) for q in front], outline=logo, width=12)
+        d.polygon([P(add(fc, mul(sub(q, fc), 0.22))) for q in front], fill=logo)
+
+
+def cymbal(d, center, r, tilt=0.28, color=(232, 190, 64, 255)):
+    pts = [(center[0] + r * math.cos(a), center[1] - tilt * r * math.cos(a), center[2] + r * math.sin(a))
+           for a in [i * 2 * math.pi / 40 for i in range(40)]]
+    d.polygon([P(q) for q in pts], fill=color, outline=INK, width=5)
+    d.polygon([P(add(center, mul(sub(q, center), 0.3))) for q in pts], fill=shade(color, 1.15))
+
+
+def amp(d, x0, x1, y0, y1, z0, z1, cones=2):
+    box(d, x0, x1, y0, y1, z0, z1, (58, 58, 68, 255), (26, 26, 34, 255), (40, 40, 50, 255))
+    m, top = 0.06, y1 - 0.16  # grille on the front face (z = z0), with speaker cones
+    z = z0 - 0.002
+    d.polygon([P((x0 + m, y0 + m, z)), P((x1 - m, y0 + m, z)), P((x1 - m, top, z)), P((x0 + m, top, z))],
+              fill=(44, 44, 54, 255), outline=INK, width=4)
+    r = min(x1 - x0 - 2 * m, (top - y0 - m) / cones) * 0.42
+    for i in range(cones):
+        c = ((x0 + x1) / 2, y0 + m + (i + 0.5) * (top - y0 - m) / cones, z0 - 0.004)
+        d.polygon([P(q) for q in disc(c, r, "z")], fill=(18, 18, 24, 255), outline=(96, 96, 110, 255), width=4)
+        d.polygon([P(q) for q in disc(c, r * 0.35, "z")], fill=(74, 74, 88, 255))
+    for i in range(4):  # control knobs
+        knob(d, (x0 + (x1 - x0) * (0.2 + 0.2 * i), y1 - 0.08, z0 - 0.01), 0.018, (220, 220, 230, 255), 0.008)
+
+
+def guitar_fn(p, body, lower=0.23, upper=0.17, neck_len=0.95, accent=(20, 20, 26, 255)):
+    """A guitar held across the body, in the player's side plane (so it reads in profile)."""
+    f, s, b = p["f"], p["side"], p["base"]
+    near = 1 if dot(s, sub(CAM, b)) > 0 else -1
+    th = math.radians(24)
+    n = add(mul(f, math.cos(th)), (0, math.sin(th), 0))      # along the neck
+    m = add(mul(f, -math.sin(th)), (0, math.cos(th), 0))     # across the body
+    hip = p["trunk"][0]
+    origin = add(hip, add(mul(f, 0.14), add((0, -0.02, 0), mul(s, 0.24 * near))))
+
+    def pt(a, c):
+        return add(origin, add(mul(n, a), mul(m, c)))
+
+    def circ(a0, c0, r, k=36):
+        return [P(pt(a0 + r * math.cos(t), c0 + r * math.sin(t))) for t in [i * 2 * math.pi / k for i in range(k)]]
+
+    def fn(dd):
+        dd.polygon(circ(-0.06, 0, lower), fill=INK)
+        dd.polygon(circ(0.17, 0.02, upper), fill=INK)
+        dd.polygon(circ(-0.06, 0, lower - 0.013), fill=body)
+        dd.polygon(circ(0.17, 0.02, upper - 0.013), fill=body)
+        dd.polygon(circ(-0.07, 0, lower * 0.55), fill=shade(body, 1.3))       # sunburst
+        rod(dd, [pt(0.16, 0.0), pt(neck_len, 0.0)], 0.03, (92, 58, 34, 255), 0.012)   # neck
+        head = [pt(neck_len - 0.01, -0.04), pt(neck_len + 0.15, -0.055), pt(neck_len + 0.16, 0.04), pt(neck_len - 0.01, 0.035)]
+        dd.polygon([P(q) for q in head], fill=(30, 22, 18, 255), outline=INK, width=4)
+        for a in (-0.03, 0.09):  # pickups
+            dd.polygon([P(pt(a - 0.018, -0.07)), P(pt(a + 0.018, -0.07)), P(pt(a + 0.018, 0.07)), P(pt(a - 0.018, 0.07))], fill=accent)
+        dd.polygon([P(pt(-0.13, -0.08)), P(pt(-0.11, -0.08)), P(pt(-0.11, 0.08)), P(pt(-0.13, 0.08))], fill=(200, 200, 210, 255))
+    return fn
+
+
+
 # ---------------------------------------------------------------- the scene
 STAGE = dict(x0=1.25, x1=5.6, y=0.7, z0=1.3, z1=7.5)
 PIT = (-0.55, 2.75)  # circle pit centre (x, z)
 PIT_R = 1.3
+RISER = 0.3  # drum riser height
 
 
 def draw():
@@ -199,14 +318,14 @@ def draw():
     # stage, amps
     sy = STAGE["y"]
     box(d, STAGE["x0"], STAGE["x1"], 0, sy, STAGE["z0"], STAGE["z1"], STAGE_TOP, STAGE_FRONT, STAGE_SIDE)
-    amp = ((60, 60, 70, 255), (25, 25, 32, 255), (40, 40, 48, 255))
-    box(d, 4.6, 5.3, sy, sy + 1.1, 5.4, 6.1, *amp)
-    box(d, 2.2, 2.9, sy, sy + 1.0, 4.8, 5.4, *amp)
+    box(d, 3.75, 5.45, sy, sy + RISER, 4.1, 5.5, (82, 72, 136, 255), (34, 28, 64, 255), (48, 40, 86, 255))  # drum riser
+    amp(d, 5.55, 6.2, sy, sy + 1.15, 5.0, 5.7)
+    amp(d, 2.6, 3.35, sy, sy + 0.95, 4.7, 5.3)
 
     # light beams onto the band
     beams = Image.new("RGBA", img.size, (0, 0, 0, 0))
     bd = ImageDraw.Draw(beams)
-    for lx, lz, col in ((1.95, 2.3, (30, 215, 96)), (2.95, 2.75, (255, 95, 190)), (3.95, 3.15, (30, 215, 96)), (4.75, 4.2, (255, 95, 190))):
+    for lx, lz, col in ((1.95, 2.3, (30, 215, 96)), (2.95, 2.75, (255, 95, 190)), (4.75, 2.55, (30, 215, 96)), (4.4, 4.75, (255, 95, 190))):
         pool = [P((lx + 0.75 * math.cos(a), sy + 0.01, lz + 0.6 * math.sin(a))) for a in [i * math.pi / 16 for i in range(32)]]
         bd.polygon(convex_hull(pool + [P((lx, 4.8, lz))]), fill=col + (55,))
         bd.polygon(pool, fill=col + (90,))
@@ -223,37 +342,54 @@ def draw():
     # ---- the band, facing the pit (yaw 180 = facing -x), so the camera sees them side-on
     singer = person(stage_at(1.95, 2.3), 180, BAND["singer"], lean=-8, tilt=-15,
                     arms=((165, 5), (95, 70)), legs=((12, -5), (-12, 5)))
-    mic_base, mic_top, mic = stage_at(1.5, 2.3), (1.58, sy + 1.40, 2.3), (1.62, sy + 1.46, 2.3)
-    put(depth(mic_base) + 0.05, lambda dd: (capsule(dd, [mic_base, mic_top], 0.018, (200, 200, 210, 255), 0.012),
-                                            ball(dd, mic, 0.05, (60, 60, 70, 255))))
+    pole_x, pole_z = 1.45, 2.3
+    hub, pole_top = (pole_x, sy + 0.16, pole_z), (pole_x, sy + 1.12, pole_z)
+    boom_end, mic_tip = (1.72, sy + 1.5, pole_z), (1.8, sy + 1.53, pole_z)
 
-    def guitar(p, body_col):
-        f, s, b = p["f"], p["side"], p["base"]
-        near = 1 if dot(s, sub(CAM, b)) > 0 else -1
-        c = add(b, add(mul(f, 0.18), add((0, 0.95, 0), mul(s, 0.22 * near))))
-        neck_end = add(c, add(mul(f, 0.7), (0, 0.36, 0)))
-        body = [add(c, add(mul(f, 0.24 * math.cos(a)), (0, 0.2 * math.sin(a), 0))) for a in [i * math.pi / 16 for i in range(32)]]
-
-        def fn(dd):
-            capsule(dd, [c, neck_end], 0.025, (60, 40, 30, 255), 0.014)
-            dd.polygon([P(q) for q in body], fill=body_col, outline=INK, width=6)
-        return fn
+    def mic_stand(dd):
+        metal = (190, 190, 204, 255)
+        for a in (0, 120, 240):
+            t = math.radians(a + 30)
+            rod(dd, [hub, (pole_x + 0.2 * math.cos(t), sy, pole_z + 0.2 * math.sin(t))], 0.011, metal, 0.008)
+        rod(dd, [hub, pole_top], 0.014, metal, 0.009)
+        rod(dd, [pole_top, boom_end], 0.011, metal, 0.008)
+        rod(dd, [boom_end, mic_tip], 0.026, (30, 30, 36, 255), 0.01)
+        knob(dd, mic_tip, 0.036, (120, 120, 132, 255), 0.01)
+    put(depth(hub) - 0.05, mic_stand)
 
     gtr = person(stage_at(2.95, 2.75), 180, BAND["guitar"], lean=-14, tilt=-20, arms=((70, 35), (55, 60)), legs=((30, -10), (-20, 0)))
-    bass = person(stage_at(3.95, 3.15), 180, BAND["bass"], lean=12, tilt=15, arms=((60, 40), (45, 70)), legs=((18, -8), (-15, 3)))
-    drummer = person(stage_at(5.0, 4.2), 180, BAND["drums"], hip=0.55, lean=5, arms=((150, 20), (120, 30)), legs=((90, -90), (90, -90)))
+    bass = person(stage_at(4.75, 2.55), 180, BAND["bass"], lean=12, tilt=15, arms=((60, 40), (45, 70)), legs=((18, -8), (-15, 3)))
+    drummer = person((4.8, sy + RISER, 4.75), 180, BAND["drums"], hip=0.55, lean=5, arms=((150, 20), (120, 30)), legs=((90, -90), (90, -90)))
     for p in (singer, gtr, bass, drummer):
         put(depth(p["base"]), lambda dd, p=p: draw_person(dd, p))
         shadows.append(p["base"])
-    put(depth(gtr["base"]) - 0.3, guitar(gtr, (230, 40, 50, 255)))
-    put(depth(bass["base"]) - 0.3, guitar(bass, (240, 240, 250, 255)))
-    kit = (4.35, sy + 0.32, 4.2)
-    put(depth(kit) - 0.4, lambda dd: drum(dd, kit, 0.32, 0.4, "x", (230, 40, 50, 255)))
-    for cx, cz, h in ((4.25, 3.65, 1.1), (4.3, 4.75, 1.25)):
-        top = (cx, sy + h, cz)
-        put(depth(top) - 0.5, lambda dd, cx=cx, cz=cz, top=top: (
-            capsule(dd, [(cx, sy, cz), top], 0.012, (200, 200, 210, 255), 0.01),
-            dd.polygon([P(q) for q in disc(top, 0.28, "y", 24)], fill=(250, 210, 60, 255), outline=INK, width=5)))
+    put(depth(gtr["base"]) - 0.3, guitar_fn(gtr, (214, 40, 46, 255)))
+    put(depth(bass["base"]) - 0.3, guitar_fn(bass, (34, 150, 200, 255), lower=0.25, upper=0.18, neck_len=1.22,
+                                             accent=(235, 235, 240, 255)))
+
+    # drum kit in front of the drummer (who faces -x), on the riser
+    metal, shell = (190, 190, 204, 255), (196, 30, 58, 255)
+    ry, sx, sz = sy + RISER, 4.8, 4.75   # riser top, drum seat
+    kick, snare, rack = (sx - 0.62, ry + 0.3, sz), (sx - 0.32, ry + 0.62, sz + 0.28), (sx - 0.55, ry + 0.78, sz - 0.02)
+    floor_tom, hihat = (sx - 0.3, ry + 0.38, sz - 0.4), (sx - 0.4, ry + 0.98, sz + 0.62)
+    crash, ride = (sx - 0.78, ry + 1.32, sz - 0.48), (sx - 0.72, ry + 1.2, sz + 0.52)
+
+    def stand(dd, top):
+        rod(dd, [(top[0], ry, top[2]), top], 0.011, metal, 0.008)
+
+    def floor_tom_fn(dd):
+        for a in (0.5, 2.6, 4.6):
+            rod(dd, [add(floor_tom, (0.15 * math.cos(a), -0.1, 0.15 * math.sin(a))),
+                     (floor_tom[0] + 0.2 * math.cos(a), ry, floor_tom[2] + 0.2 * math.sin(a))], 0.01, metal, 0.007)
+        drum_shell(dd, floor_tom, 0.19, 0.36, "y", shell)
+
+    put(depth(kick) - 0.2, lambda dd: drum_shell(dd, kick, 0.32, 0.42, "x", shell, logo=(255, 95, 190, 255)))
+    put(depth(floor_tom) - 0.3, floor_tom_fn)
+    put(depth(rack) - 0.35, lambda dd: drum_shell(dd, rack, 0.14, 0.18, "y", shell))
+    put(depth(snare) - 0.3, lambda dd: (stand(dd, add(snare, (0, -0.07, 0))), drum_shell(dd, snare, 0.17, 0.13, "y", (200, 200, 212, 255))))
+    put(depth(hihat) - 0.2, lambda dd: (stand(dd, hihat), cymbal(dd, add(hihat, (0, -0.05, 0)), 0.17, tilt=0.0), cymbal(dd, hihat, 0.17, tilt=0.0)))
+    put(depth(crash) - 0.6, lambda dd: (stand(dd, crash), cymbal(dd, crash, 0.26)))
+    put(depth(ride) - 0.4, lambda dd: (stand(dd, ride), cymbal(dd, ride, 0.29, tilt=-0.22)))
 
     # ---- the circle pit: runners going round counter-clockwise
     for i, a in enumerate((200, 330, 15, 60, 105, 150)):
@@ -277,16 +413,6 @@ def draw():
     for p in (shover, victim):
         put(depth(p["base"]), lambda dd, p=p: draw_person(dd, p))
         shadows.append(p["base"])
-    impact = add(victim_base, (-0.3, 1.3, -0.1))
-
-    def bang(dd):
-        (x, y), z = proj(impact)
-        r = FOCAL * 0.12 / z
-        for k in range(8):
-            t = math.radians(k * 45 + 20)
-            dd.line([(x + r * math.cos(t), y + r * math.sin(t)), (x + 2.2 * r * math.cos(t), y + 2.2 * r * math.sin(t))],
-                    fill=(255, 240, 120, 255), width=int(r * 0.35))
-    put(depth(impact) - 1, bang)
 
     for b in shadows:
         shadow(img, b)
@@ -308,6 +434,8 @@ def finish(img):
 
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "assets"
+    if "--silhouette" in sys.argv:
+        STYLE = "silhouette"
     img = finish(draw())
     img.save(f"{out}/festify.png")
     img.resize((256, 256), Image.LANCZOS).save(

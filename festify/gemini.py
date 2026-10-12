@@ -53,7 +53,19 @@ class GeminiLLM:
             if wait > 0:
                 time.sleep(wait)
             self._last = time.monotonic()
-            r = self.s.post(url, json=body, headers={"x-goog-api-key": self.key}, timeout=120)
+            try:
+                r = self.s.post(url, json=body, headers={"x-goog-api-key": self.key}, timeout=90)
+            except (requests.Timeout, requests.ConnectionError):
+                # a hung or dropped request: treat like "busy" (retry, then try the next free model)
+                fails += 1
+                if fails >= 2 and self.fallbacks:
+                    self.model, fails = self.fallbacks.pop(0), 0
+                    continue
+                if fails < 4 and attempt < 8:
+                    time.sleep(min(30, 5 * fails))
+                    continue
+                raise BillingError("Gemini isn't responding right now (timed out). Check your internet connection "
+                                   "and re-run in a few minutes; finished work is cached.")
             if r.status_code == 200:
                 data = r.json()
                 self.calls += 1

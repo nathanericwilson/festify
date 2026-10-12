@@ -92,3 +92,28 @@ def test_search_quota_is_not_fatal_and_fails_fast(monkeypatch):
     with pytest.raises(SearchUnavailable):
         g.ask_json_web("s", "p")
     assert len(s.bodies) == 1  # no retries / model hopping for the search quota
+
+
+def test_timeout_retries_then_falls_back(monkeypatch):
+    import requests
+    from festify import gemini as g
+    monkeypatch.setattr(g.time, "sleep", lambda *_: None)
+
+    class Resp:
+        status_code = 200
+        def json(self):
+            return {"candidates": [{"content": {"parts": [{"text": '{"ok": true}'}]}}]}
+
+    class Sess:
+        def __init__(self):
+            self.models = []
+        def post(self, url, **k):
+            self.models.append(url.split("/")[-1].split(":")[0])
+            if len(self.models) <= 2:
+                raise requests.ReadTimeout("slow")
+            return Resp()
+
+    s = Sess()
+    llm = g.GeminiLLM("k", min_interval=0, session=s)
+    assert llm.ask_json("sys", "hi") == {"ok": True}
+    assert s.models[0] == "gemini-3.8-flash" and s.models[2] == g.FALLBACKS[0]  # switched model after 2 timeouts

@@ -264,62 +264,111 @@ def page(site_key: str, embed: bool) -> str:
 
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>festify</title><link rel="icon" href="/favicon.png">
+<title>FESTIFY.EXE</title><link rel="icon" href="/favicon.png">
 <meta name="description" content="Paste an Instagram concert post, get a Spotify playlist of the bands on it.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#14102c;--card:#1d1740;--ink:#f1eefc;--muted:#a49cc9;--line:#342b66;--accent:#1ed760;--pink:#ff5fbe;--warn:#ffc35a}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-body.embed{background:transparent}
-.wrap{max-width:640px;margin:auto;padding:28px 16px 40px}.embed .wrap{padding:8px}
-header{display:flex;gap:14px;align-items:center;margin-bottom:6px}header img{width:64px;height:64px;border-radius:14px}
-h1{margin:0;font-size:30px;letter-spacing:-.02em}h1 span{color:var(--accent)}
-.sub{color:var(--muted);margin:4px 0 18px}.embed header,.embed .sub,.embed .recent,.embed footer{display:none}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+:root{--bg:#07080c;--screen:#0d1018;--panel:#121725;--line:#26304a;--ink:#e8e4d8;--muted:#8d93a8;
+  --amber:#ffb340;--amber-dim:#a8722a;--blue:#5cc8ff;--blue-dim:#2b6f99;--warn:#ff8a5c;--glow:0 0 8px rgba(255,179,64,.45)}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(ellipse at 50% 0%,#141a2b 0%,var(--bg) 70%) fixed;color:var(--ink);
+  font:15px/1.6 "Space Mono",ui-monospace,Consolas,monospace;min-height:100vh}
+body.embed{background:transparent;min-height:0}
+/* CRT scanlines + vignette over everything */
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;
+  background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0,rgba(0,0,0,0) 2px,rgba(0,0,0,.18) 3px,rgba(0,0,0,0) 4px),
+             radial-gradient(ellipse at center,rgba(0,0,0,0) 60%,rgba(0,0,0,.45) 100%)}
+.embed::after{background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0,rgba(0,0,0,0) 2px,rgba(0,0,0,.14) 3px,rgba(0,0,0,0) 4px)}
+.wrap{max-width:720px;margin:0 auto;padding:36px 16px 48px}.embed .wrap{padding:6px}
+/* the program window */
+.win{border:2px solid var(--line);background:var(--screen);box-shadow:0 0 0 1px #000,0 18px 60px rgba(0,0,0,.6),0 0 40px rgba(92,200,255,.06)}
+.bar{display:flex;align-items:center;gap:10px;padding:6px 10px;background:linear-gradient(90deg,#1b2440,#141a2c);
+  border-bottom:2px solid var(--line);font-family:VT323,monospace;font-size:22px;letter-spacing:1px;color:var(--blue)}
+.bar .t{flex:1;text-shadow:0 0 6px rgba(92,200,255,.5)}
+.bar .b{width:16px;height:16px;border:2px solid var(--blue-dim);display:inline-block}
+.body{padding:24px}
+.hero{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+.logo{width:168px;height:168px;flex:none;border:2px solid var(--amber-dim);padding:6px;background:#000;
+  box-shadow:0 0 0 2px #000,0 0 24px rgba(255,179,64,.25);image-rendering:auto}
+.logo img{width:100%;height:100%;display:block}
+h1{font-family:VT323,monospace;font-weight:400;font-size:64px;line-height:.9;margin:0;color:var(--amber);text-shadow:var(--glow);letter-spacing:2px}
+h1 small{display:block;font-size:22px;color:var(--blue);letter-spacing:1px;text-shadow:0 0 6px rgba(92,200,255,.4);margin-top:6px}
+.lede{margin:10px 0 0;color:var(--muted);max-width:420px}
+.cursor{display:inline-block;width:.6em;height:1em;background:var(--amber);vertical-align:-2px;margin-left:4px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.panel{margin-top:24px;border:2px solid var(--line);background:var(--panel);padding:16px}
+.label{font-family:VT323,monospace;font-size:20px;color:var(--blue);margin:0 0 8px;letter-spacing:1px}
 .row{display:flex;gap:10px;flex-wrap:wrap}
-input{flex:1 1 260px;min-width:0;border:1px solid var(--line);border-radius:12px;padding:13px;background:#120e28;color:var(--ink);font:inherit}
-button{border:0;border-radius:999px;padding:13px 22px;font:700 15px system-ui;background:var(--accent);color:#06210f;cursor:pointer}
-button:disabled{opacity:.5;cursor:default}
-.cf-turnstile{margin-top:10px}
-#status{margin-top:12px;color:var(--muted);min-height:1.5em}#status.err{color:var(--warn)}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:8px;animation:p 1s infinite}@keyframes p{50%{opacity:.25}}
-a.pl{display:block;margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:12px;color:var(--ink);text-decoration:none;font-weight:600}
-a.pl:hover{border-color:var(--accent)}a.pl small{display:block;color:var(--muted);font-weight:400;font-size:13px;margin-top:4px}
-.recent h2{font-size:15px;color:var(--muted);margin:0 0 8px;font-weight:600}
-.recent a{display:block;color:var(--ink);text-decoration:none;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
-.recent a:hover{color:var(--accent)}
-footer{color:var(--muted);font-size:12.5px}footer a{color:var(--muted)}
+.prompt{flex:1 1 300px;display:flex;align-items:center;border:2px solid var(--amber-dim);background:#05060a;padding:0 10px;min-width:0}
+.prompt:focus-within{border-color:var(--amber);box-shadow:var(--glow)}
+.prompt span{color:var(--amber);font-family:VT323,monospace;font-size:22px;margin-right:6px}
+input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font:15px "Space Mono",monospace;padding:12px 0}
+input::placeholder{color:#59607a}
+button{border:2px solid var(--amber);background:var(--amber);color:#1a1000;font:24px VT323,monospace;letter-spacing:1px;
+  padding:6px 20px;cursor:pointer;text-transform:uppercase;box-shadow:4px 4px 0 #000}
+button:hover{background:#ffc566}button:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #000}
+button:disabled{opacity:.5;cursor:default;transform:none}
+.cf-turnstile{margin-top:12px}
+#status{margin-top:14px;min-height:1.6em;color:var(--blue)}#status.err{color:var(--warn)}
+#status .spin::before{content:"";display:inline-block;width:10px;height:10px;background:var(--blue);margin-right:10px;animation:blink .8s steps(1) infinite}
+a.pl{display:block;margin-top:14px;padding:14px 16px;border:2px solid var(--blue-dim);background:#0a1220;color:var(--ink);text-decoration:none}
+a.pl:hover{border-color:var(--blue);box-shadow:0 0 14px rgba(92,200,255,.25)}
+a.pl b{font-family:VT323,monospace;font-weight:400;font-size:26px;color:var(--blue);display:block;line-height:1.1}
+a.pl small{display:block;color:var(--muted);font-size:13px;margin-top:6px}
+.recent ol{list-style:none;margin:0;padding:0}
+.recent li{border-bottom:1px dashed var(--line)}
+.recent a{display:flex;gap:10px;color:var(--ink);text-decoration:none;padding:8px 0;font-size:14px}
+.recent a::before{content:">";color:var(--amber)}.recent a:hover{color:var(--amber)}
+.empty{color:var(--muted);font-size:14px}
+footer{margin-top:18px;color:var(--muted);font-size:12px;line-height:1.6}
+.embed .hero,.embed .recent,.embed footer,.embed .bar{display:none}.embed .body{padding:12px}.embed .panel{margin-top:0}
+@media (max-width:520px){.hero{justify-content:center;text-align:center}.logo{width:200px;height:200px}h1{font-size:54px}.lede{margin-left:auto;margin-right:auto}.body{padding:16px}}
+@media (prefers-reduced-motion:reduce){.cursor,#status .spin::before{animation:none}}
 </style></head><body class="__EMBED__"><div class="wrap">
-<header><img src="/favicon.png" alt=""><div><h1>fest<span>ify</span></h1></div></header>
-<p class="sub">Paste an Instagram concert post. Get a Spotify playlist of the bands on it, so you can decide if the show's worth going to.</p>
-<div class="card">
-  <div class="row"><input id="url" type="url" inputmode="url" placeholder="https://www.instagram.com/p/…" aria-label="Instagram post link" autocomplete="off">
-  <button id="go">Make playlist</button></div>
-  __TURNSTILE__
-  <div id="status" role="status" aria-live="polite"></div>
-  <div id="result"></div>
+<div class="win">
+  <div class="bar"><span class="t">FESTIFY.EXE</span><span class="b"></span><span class="b"></span></div>
+  <div class="body">
+    <div class="hero">
+      <div class="logo"><img src="/favicon.png" alt="festify logo: a mosh pit and a band on stage"></div>
+      <div><h1>FESTIFY<small>poster &rarr; playlist</small></h1>
+        <p class="lede">Paste an Instagram concert post. Get a Spotify playlist of the bands on it, so you can tell if the show's worth going to.<span class="cursor" aria-hidden="true"></span></p></div>
+    </div>
+    <div class="panel">
+      <p class="label">&gt; PASTE A POST LINK</p>
+      <div class="row">
+        <label class="prompt"><span>C:\&gt;</span><input id="url" type="url" inputmode="url" placeholder="https://www.instagram.com/p/..." aria-label="Instagram post link" autocomplete="off"></label>
+        <button id="go">Run</button>
+      </div>
+      __TURNSTILE__
+      <div id="status" role="status" aria-live="polite"></div>
+      <div id="result"></div>
+    </div>
+    <div class="panel recent"><p class="label">&gt; RECENTLY MADE</p><ol id="recent"><li class="empty">Nothing yet.</li></ol></div>
+    <footer>Playlists are created on the festify Spotify account and open in Spotify. Not affiliated with Spotify or Instagram.
+    Small local bands sometimes share names with other artists; anything uncertain is noted in the playlist description.</footer>
+  </div>
 </div>
-<div class="card recent"><h2>Recently made</h2><div id="recent"><span style="color:var(--muted);font-size:14px">Nothing yet.</span></div></div>
-<footer>Playlists are created on the festify Spotify account and open in Spotify. Not affiliated with Spotify or Instagram.
-Small local bands sometimes share names with other artists; anything uncertain is noted in the playlist description.</footer>
 </div>
 <script>
 const $=id=>document.getElementById(id);let timer=null;
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const safe=u=>/^https:\/\/open\.spotify\.com\//.test(u)?u:"#";
-function show(pls){$("result").innerHTML=pls.map(p=>`<a class="pl" href="${safe(p.url)}" target="_blank" rel="noopener">▶ ${esc(p.name)}<small>${esc((p.description||"").replace(/\s*Made with festify\.$/,"").replace(/^festify:\s*/,""))}</small></a>`).join("")}
-function status(t,err,busy){$("status").className=err?"err":"";$("status").innerHTML=(busy?'<span class="dot"></span>':"")+esc(t)}
+function show(pls){$("result").innerHTML=pls.map(p=>`<a class="pl" href="${safe(p.url)}" target="_blank" rel="noopener"><b>&#9654; ${esc(p.name)}</b><small>${esc((p.description||"").replace(/\s*Made with festify\.$/,"").replace(/^festify:\s*/,""))}</small></a>`).join("")}
+function status(t,err,busy){$("status").className=err?"err":"";$("status").innerHTML=(busy?'<span class="spin"></span>':"")+esc(t)}
 async function poll(id){const r=await fetch("/job/"+id);if(!r.ok){status("Lost track of that request. Try again.",true);return done()}
-  const j=await r.json();if(j.status==="done"){status("Here's your playlist:");show(j.playlists);loadRecent();return done()}
+  const j=await r.json();if(j.status==="done"){status("Done. Here's your playlist:");show(j.playlists);loadRecent();return done()}
   if(j.status==="failed"){status(j.error,true);return done()}status(j.step,false,true);timer=setTimeout(()=>poll(id),1500)}
 function done(){$("go").disabled=false;if(window.turnstile)try{turnstile.reset()}catch(e){}}
-async function go(){const url=$("url").value.trim();if(!url)return;$("go").disabled=true;$("result").innerHTML="";status("Starting…",false,true);
+async function go(){const url=$("url").value.trim();if(!url)return;$("go").disabled=true;$("result").innerHTML="";status("Starting...",false,true);
   let token="";const t=document.querySelector('[name="cf-turnstile-response"]');if(t)token=t.value;
   try{const r=await fetch("/make",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,token})});
     const j=await r.json();if(j.error){status(j.error,true);return done()}
-    if(j.done){status("Already made, here it is:");show(j.playlists);return done()}poll(j.job)}
+    if(j.done){status("Already made. Here it is:");show(j.playlists);return done()}poll(j.job)}
   catch(e){status("festify isn't reachable right now. Try again later.",true);done()}}
 async function loadRecent(){try{const j=await (await fetch("/recent")).json();if(j.playlists.length)
-  $("recent").innerHTML=j.playlists.map(p=>`<a href="${safe(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>`).join("")}catch(e){}}
+  $("recent").innerHTML=j.playlists.map(p=>`<li><a href="${safe(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a></li>`).join("")}catch(e){}}
 $("go").onclick=go;$("url").onkeydown=e=>{if(e.key==="Enter")go()};loadRecent();
 </script></body></html>"""
 

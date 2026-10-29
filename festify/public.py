@@ -202,16 +202,21 @@ class Service:
 # ---------------------------------------------------------------------------- web
 def make_handler(svc: Service, site_key: str = "", embed_origins: str = ""):
     frame = "frame-ancestors " + (embed_origins.strip() or "'none'")
+    allowed = set(embed_origins.split())
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
 
-        def _send(self, code, body, ctype="application/json"):
+        def _send(self, code, body, ctype="application/json", cors=False):
             data = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body)).encode()
             self.send_response(code)
             self.send_header("Content-Type", ctype + ("; charset=utf-8" if "image" not in ctype else ""))
             self.send_header("Content-Length", str(len(data)))
+            origin = self.headers.get("Origin", "")
+            if cors and origin in allowed:  # lets the embedding site check the page is up before framing it
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
             self.send_header("Content-Security-Policy", frame)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
@@ -231,6 +236,8 @@ def make_handler(svc: Service, site_key: str = "", embed_origins: str = ""):
                 return self._send(200, (ROOT / "assets" / "festify.png").read_bytes(), "image/png")
             if path == "/recent":
                 return self._send(200, {"playlists": svc.recent()})
+            if path == "/ping":
+                return self._send(200, {"ok": True}, cors=True)
             m = re.fullmatch(r"/job/([0-9a-f]{12})", path)
             if m:
                 st = svc.status(m.group(1))
@@ -429,6 +436,33 @@ def cloudflared_path() -> str | None:
     return None
 
 
+def publish_address(url: str, repo: str, log, path: str = "data/festify.json", run=None) -> bool:
+    """Write the new public address into a site repo (e.g. PUBLIC_SITE_REPO=you/your-site) with the GitHub
+    CLI, so a site that embeds festify always points at the current quick-tunnel address. Needs `gh auth login`."""
+    import base64
+    import shutil
+    import subprocess
+
+    run = run or subprocess.run
+    gh = shutil.which("gh") or "gh"
+    api = f"repos/{repo}/contents/{path}"
+    body = json.dumps({"url": url, "updated": datetime.now().astimezone().isoformat(timespec="seconds")}, indent=2) + "\n"
+    try:
+        got = run([gh, "api", api, "-q", ".sha"], capture_output=True, text=True)
+        sha = got.stdout.strip() if got.returncode == 0 else ""  # no sha yet: the file gets created
+        cmd = [gh, "api", "-X", "PUT", api, "-f", "message=festify: new public address",
+               "-f", "content=" + base64.b64encode(body.encode()).decode()] + (["-f", f"sha={sha}"] if sha else [])
+        put = run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        log("! gh isn't installed, so the site wasn't told the new address.")
+        return False
+    if put.returncode != 0:
+        log("! couldn't update the site's festify address: " + (put.stderr or put.stdout).strip()[:200])
+        return False
+    log(f"site updated: {repo}/{path} now points at {url}")
+    return True
+
+
 def start_tunnel(log):
     """A free Cloudflare quick tunnel: a public https address (it changes each time) that forwards here.
     For a fixed address on your own domain, see README "Share it with others"."""
@@ -452,6 +486,9 @@ def start_tunnel(log):
                 url = m.group(0)
                 (ROOT / "logs" / "public_url.txt").write_text(url + "\n", encoding="utf-8")
                 log(f"PUBLIC ADDRESS: {url}  (share this; it changes each time festify public restarts)")
+                repo = os.environ.get("PUBLIC_SITE_REPO", "").strip()
+                if repo:
+                    threading.Thread(target=publish_address, args=(url, repo, log), daemon=True).start()
                 if "--no-browser" not in sys.argv:
                     webbrowser.open(url)
             elif "ERR" in line:

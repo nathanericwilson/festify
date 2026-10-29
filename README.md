@@ -107,7 +107,7 @@ Double-click **`Public.bat`**. It starts a public version of the page on your PC
 - **Optional bot check:** add free [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) keys (`TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET`).
 - **It's only online while your PC is on and `Public.bat` is running.** The quick-tunnel address changes every restart.
 
-**Embedding it on a website.** `https://<address>/?embed=1` is a compact version for an iframe. To allow it, list your site in `PUBLIC_EMBED_ORIGINS` (e.g. `https://yourname.com`); every other site is blocked. Because the page is only up while your PC is on, put a short demo GIF next to the embed, or use a "Try it live" button.
+**Embedding it on a website.** `https://<address>/?embed=1` is a compact version for an iframe. To allow it, list your site in `PUBLIC_EMBED_ORIGINS` (e.g. `https://yourname.com`); every other site is blocked. The quick-tunnel address changes every restart, so set `PUBLIC_SITE_REPO=owner/site` too. Each new address is then written to that repo's `data/festify.json` with the GitHub CLI, and the site reads it from there. `GET /ping` answers those origins (CORS), so the site can tell whether festify is up before showing the iframe. Because the page is only up while your PC is on, show a fallback when it's down.
 
 **A fixed address on your own domain.** Add the domain to Cloudflare (free plan), then run once:
 

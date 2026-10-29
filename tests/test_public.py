@@ -117,3 +117,54 @@ def test_http_headers_and_embed(tmp_path):
         assert e.value.code == 403
     finally:
         srv.shutdown()
+
+
+def test_ping_allows_only_embed_origins(tmp_path):
+    from http.server import ThreadingHTTPServer
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(svc(tmp_path), embed_origins="https://me.example https://b.example"))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        for origin, want in [("https://me.example", "https://me.example"), ("https://b.example", "https://b.example"),
+                             ("https://evil.example", None), ("", None)]:
+            r = urllib.request.urlopen(urllib.request.Request(base + "/ping", headers={"Origin": origin} if origin else {}))
+            assert json.loads(r.read()) == {"ok": True}
+            assert r.headers["Access-Control-Allow-Origin"] == want
+        r = urllib.request.urlopen(urllib.request.Request(base + "/recent", headers={"Origin": "https://me.example"}))
+        assert r.headers["Access-Control-Allow-Origin"] is None  # only /ping is readable cross-origin
+    finally:
+        srv.shutdown()
+
+
+class FakeRun:
+    def __init__(self, sha="", get_rc=0, put_rc=0):
+        self.calls, self.sha, self.get_rc, self.put_rc = [], sha, get_rc, put_rc
+
+    def __call__(self, cmd, **_):
+        import types
+        self.calls.append(cmd)
+        put = "PUT" in cmd
+        return types.SimpleNamespace(returncode=self.put_rc if put else self.get_rc,
+                                     stdout="" if put else self.sha, stderr="boom" if put and self.put_rc else "")
+
+
+def test_publish_address_updates_or_creates_the_site_file():
+    import base64
+
+    from festify.public import publish_address
+
+    run = FakeRun(sha="abc123")
+    assert publish_address("https://x.trycloudflare.com", "me/site", lambda *_: None, run=run)
+    put = run.calls[1]
+    assert "repos/me/site/contents/data/festify.json" in put and "sha=abc123" in put
+    content = next(a for a in put if a.startswith("content="))[len("content="):]
+    assert json.loads(base64.b64decode(content))["url"] == "https://x.trycloudflare.com"
+
+    run = FakeRun(get_rc=1)  # file doesn't exist yet
+    assert publish_address("https://y.trycloudflare.com", "me/site", lambda *_: None, run=run)
+    assert not any(a.startswith("sha=") for a in run.calls[1])
+
+    logs = []
+    assert not publish_address("https://z.trycloudflare.com", "me/site", logs.append, run=FakeRun(put_rc=1))
+    assert "boom" in logs[0]

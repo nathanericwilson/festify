@@ -56,6 +56,19 @@ Thirteen bands is a small sample, so it's a regression check, not a claim about 
 - **A stale app.** A run failed with an old error because a copy of the app from the day before was still running. Now a newly opened window replaces the old one.
 - **Rate limits.** Spotify's developer mode banned the app for about 14 hours after one large refresh. Calls are now spaced and capped, and results cached, so reruns are small.
 
+## Going public
+
+I wanted other people to be able to try it, without them needing any accounts. `Public.bat` runs a public page from my PC through a free Cloudflare tunnel. Anyone pastes a post link, and the playlist is created **publicly on my Spotify account**.
+
+Opening my accounts to strangers meant designing for abuse and quota limits:
+- the page only accepts Instagram post links;
+- each visitor gets 3 playlists a day and the page makes at most 20 a day, built one at a time;
+- a post that was already made is returned instantly for free;
+- if Spotify or Google rate-limits me, the page pauses instead of hammering them;
+- visitors never see internal errors, and their addresses aren't stored.
+
+The page can be embedded on a website, for example on the case-study page you're reading.
+
 ## What I'd do next
 
 - Grow the truth set to 25–30 bands across more shows.

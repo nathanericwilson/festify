@@ -103,6 +103,56 @@ def build_resolver(cfg, cache, llm, sp, args, log=print) -> Resolver:
                     linker=None if args.no_instagram else HandleLinker(cache, cfg.ig_username, log=log, web=web))
 
 
+PUBLIC_PREFIX = "festify · "
+PUBLIC_NOTE = " Made with festify."
+
+
+class TooBig(Exception):
+    """The poster lists more bands than the public page will handle."""
+
+
+def make_public_playlists(url: str, *, cfg=None, cache=None, llm=None, sp=None, tracks: int = 3,
+                          max_artists: int = 25, progress=lambda msg: None, log=print) -> list[dict]:
+    """The public page's pipeline: one Instagram post -> one PUBLIC playlist per event on the owner's account.
+    Returns [{"name", "url", "description"}]. Same steps as the CLI, without pins, events files or options."""
+    cfg = cfg or load_config()
+    cache = cache or Cache(cfg.cache_path)
+    llm = llm or make_llm(cfg, use_claude=False)
+    progress("Reading the poster…")
+    posts = collect_inputs([url], cfg.ig_username, warn=log)
+    events = []
+    for post in posts:
+        events += extract_events(llm, post)
+    events = merge_events(events)
+    if not events:
+        return []
+    n = sum(len(e.artists) for e in events)
+    if n > max_artists:
+        raise TooBig(f"That poster lists {n} bands; the public version handles up to {max_artists}.")
+    sp = sp or Spotify(cfg, write=True)
+    args = argparse.Namespace(no_search=False, no_geocode=False, no_instagram=False, max_searches=40, tracks=tracks)
+    resolver = build_resolver(cfg, cache, llm, sp, args, log=log)
+    out = []
+    for ev in events:
+        results = []
+        for i, a in enumerate(ev.artists, 1):
+            progress(f"Finding band {i} of {len(ev.artists)}: {a}")
+            results.append(resolver.resolve(a, ev))
+        uris = list(dict.fromkeys(s.uri for r in results for s in r.songs))
+        if not uris:
+            continue
+        progress("Building the playlist…")
+        desc = playlist_description(ev, results, limit=300 - len(PUBLIC_NOTE)) + PUBLIC_NOTE
+        pl = sp.create_playlist(PUBLIC_PREFIX + playlist_name(ev), desc, public=True)
+        sp.add_items(pl["id"], uris)
+        if ev.cover_image:
+            sp.set_cover(pl["id"], ev.cover_image)
+        out.append({"name": playlist_name(ev), "url": pl.get("external_urls", {}).get("spotify", pl["id"]),
+                    "description": desc, "artists": len(ev.artists)})
+    log(llm.usage_line())
+    return out
+
+
 def main(argv=None):
     for s in (sys.stdout, sys.stderr):
         try:

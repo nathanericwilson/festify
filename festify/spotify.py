@@ -57,8 +57,13 @@ class Spotify:
                     if attempt < 3:
                         time.sleep(5 * (attempt + 1))
                         continue
-                    raise BillingError("Spotify is rate-limiting this app (in Development Mode this can last many hours). "
-                                       "Everything resolved so far is cached; re-run later to finish.") from e
+                    err = BillingError("Spotify is rate-limiting this app (in Development Mode this can last many hours). "
+                                       "Everything resolved so far is cached; re-run later to finish.")
+                    try:  # how long Spotify says to wait, for callers that want to pause (the public page)
+                        err.retry_after = int((getattr(e, "headers", None) or {}).get("Retry-After", 0))
+                    except (TypeError, ValueError):
+                        pass
+                    raise err from e
                 raise
 
     def _get(self, path: str, **params):
@@ -106,8 +111,8 @@ class Spotify:
         return [slim_track({**t, "album": {"name": album_name}}) for t in items]
 
     # --- playlists ------------------------------------------------------
-    def create_playlist(self, name: str, description: str) -> dict:
-        return self._call(self.sp._post, "me/playlists", payload={"name": name, "description": description[:300], "public": False})
+    def create_playlist(self, name: str, description: str, public: bool = False) -> dict:
+        return self._call(self.sp._post, "me/playlists", payload={"name": name, "description": description[:300], "public": public})
 
     def add_items(self, playlist_id: str, uris: list[str]):
         for i in range(0, len(uris), 100):

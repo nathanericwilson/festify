@@ -91,6 +91,40 @@ python -m festify --pin "Skrude=https://open.spotify.com/artist/<id>" --events-f
 | `--max-searches N` | Tavily searches per run (default 80; results are cached) |
 | `--claude` | use the paid Claude API instead of free Gemini |
 
+## Share it with others (public page)
+
+Double-click **`Public.bat`**. It starts a public version of the page on your PC and a free [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/), then opens the public `https://….trycloudflare.com` address. That address is also saved in `logs/public_url.txt`. Anyone with it can paste an Instagram post link and get a playlist. Close the window to stop it.
+
+- **Playlists are made on your Spotify account,** as **public** playlists named `festify · <show> – <date>`. Spotify's API can't create or fill playlist folders: make a "festify" folder in the Spotify app and drag them in. The page also lists recently made playlists.
+- **It only accepts Instagram post links.** No uploads or options; your personal app (`Festify.bat`) keeps the pins and settings.
+- **Limits protect your free tiers and your Spotify app,** whose Development Mode bans heavy users for hours. You can change them in `.env`:
+  - 3 new playlists per visitor per day, 20 a day in total;
+  - at most 5 waiting in line, one built at a time;
+  - posters with at most 25 bands.
+- **A post that was already made returns instantly,** with no API calls.
+- **A Spotify ban or a free-tier quota pauses new requests** instead of failing repeatedly.
+- **Visitors only see friendly messages.** Details go to `logs/public_<date>.log`, and visitor IP addresses are never written to disk.
+- **Optional bot check:** add free [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) keys (`TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET`).
+- **It's only online while your PC is on and `Public.bat` is running.** The quick-tunnel address changes every restart.
+
+**Embedding it on a website.** `https://<address>/?embed=1` is a compact version for an iframe. To allow it, list your site in `PUBLIC_EMBED_ORIGINS` (e.g. `https://yourname.com`); every other site is blocked. Because the page is only up while your PC is on, put a short demo GIF next to the embed, or use a "Try it live" button.
+
+**A fixed address on your own domain.** Add the domain to Cloudflare (free plan), then run once:
+
+```bash
+cloudflared tunnel login
+```
+```bash
+cloudflared tunnel create festify
+```
+```bash
+cloudflared tunnel route dns festify festify.yourname.com
+```
+
+Then create `%USERPROFILE%\.cloudflared\config.yml` with `tunnel: festify`, `credentials-file: <the .json path printed by create>` and an ingress rule sending `festify.yourname.com` to `http://127.0.0.1:8770`. Finally, set `PUBLIC_TUNNEL_NAME=festify` in `.env`, and `Public.bat` will use that address instead of a random one.
+
+Playlists open in Spotify and festify isn't affiliated with Spotify or Instagram. Keep it non-commercial, in line with [Spotify's Developer Terms](https://developer.spotify.com/terms).
+
 ## Design notes
 
 **Identity before songs.** Name matching is the main failure mode. In order of trust:

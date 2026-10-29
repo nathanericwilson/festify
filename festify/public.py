@@ -330,7 +330,8 @@ a.pl small{display:block;color:var(--muted);font-size:13px;margin-top:6px}
 .recent a::before{content:">";color:var(--amber)}.recent a:hover{color:var(--amber)}
 .empty{color:var(--muted);font-size:14px}
 footer{margin-top:18px;color:var(--muted);font-size:12px;line-height:1.6}
-.embed .hero,.embed .recent,.embed footer,.embed .bar{display:none}.embed .body{padding:12px}.embed .panel{margin-top:0}
+.embed .hero,.embed footer,.embed .bar{display:none}.embed .body{padding:12px}.embed .panel:first-child{margin-top:0}.embed .wrap{max-width:none}
+.embed .panel.recent{margin-top:12px}
 @media (max-width:520px){.hero{justify-content:center;text-align:center}.logo{width:200px;height:200px}h1{font-size:54px}.lede{margin-left:auto;margin-right:auto}.body{padding:16px}}
 @media (prefers-reduced-motion:reduce){.cursor,#status .spin::before{animation:none}}
 </style></head><body class="__EMBED__"><div class="wrap">
@@ -377,6 +378,10 @@ async function go(){const url=$("url").value.trim();if(!url)return;$("go").disab
 async function loadRecent(){try{const j=await (await fetch("/recent")).json();if(j.playlists.length)
   $("recent").innerHTML=j.playlists.map(p=>`<li><a href="${safe(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a></li>`).join("")}catch(e){}}
 $("go").onclick=go;$("url").onkeydown=e=>{if(e.key==="Enter")go()};loadRecent();
+// embedded: tell the parent page our height so its iframe fits (only a number is sent)
+if(document.body.classList.contains("embed")&&window.parent!==window){const w=document.querySelector(".wrap");
+  const send=()=>parent.postMessage({festifyHeight:Math.ceil(w.getBoundingClientRect().height)},"*");
+  new ResizeObserver(send).observe(w);send()}
 </script></body></html>"""
 
 
